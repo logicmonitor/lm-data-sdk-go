@@ -19,7 +19,11 @@ func MakeRequest(client *http.Client, url string, body []byte, uri string) (*uti
 
 	//url := fmt.Sprintf(ingestURL, os.Getenv("LM_COMPANY")) + uri
 
-	compressedBody := utils.Gzip(body)
+	compressedBody, err := utils.Gzip(body)
+	if err != nil {
+		fmt.Println("compression error::", err.Error())
+		return nil, err
+	}
 	reqBody := bytes.NewBuffer(compressedBody)
 	req, err := http.NewRequest(http.MethodPost, url, reqBody)
 	if err != nil {
