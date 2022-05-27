@@ -130,7 +130,7 @@ func TestCheckDataSourceNameValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			msg := checkDataSourceNameValidation(tt.args.dsName)
+			msg := CheckDataSourceNameValidation(tt.args.dsName)
 			if msg != tt.errorMsg {
 				t.Errorf("checkDataSourceNameValidation() unknown error = %s", msg)
 				return
@@ -184,7 +184,7 @@ func TestCheckDataSourceDisplayNameValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			msg := checkDSDisplayNameValidation(tt.args.dsName)
+			msg := CheckDSDisplayNameValidation(tt.args.dsName)
 			if msg != tt.errorMsg {
 				t.Errorf("checkDSDisplayNameValidation() unknown error = %s", msg)
 				return

@@ -32,16 +32,16 @@ func validateDatasource(dsInput model.DatasourceInput) string {
 	}
 
 	if dsName != "" {
-		errorMsg += checkDataSourceNameValidation(dsName)
+		errorMsg += CheckDataSourceNameValidation(dsName)
 	}
 
 	errorMsg += checkDSGroupValidation(dsInput.DataSourceGroup)
-	errorMsg += checkDSDisplayNameValidation(dsInput.DataSourceDisplayName)
+	errorMsg += CheckDSDisplayNameValidation(dsInput.DataSourceDisplayName)
 
 	return errorMsg
 }
 
-func checkDataSourceNameValidation(dsName string) string {
+func CheckDataSourceNameValidation(dsName string) string {
 	errorDsMsg := ""
 	if passEmptyAndSpellCheck(dsName) {
 		errorDsMsg = "Datasource Name Should not be empty or have tailing spaces. "
@@ -65,7 +65,7 @@ func checkDataSourceId(dsID int) string {
 	return errorDsMsg
 }
 
-func checkDSDisplayNameValidation(dsDisplay string) string {
+func CheckDSDisplayNameValidation(dsDisplay string) string {
 	errorDsMsg := ""
 	if dsDisplay != "" {
 		if passEmptyAndSpellCheck(dsDisplay) {

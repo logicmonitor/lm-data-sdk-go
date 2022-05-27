@@ -123,7 +123,7 @@ func TestCheckInstanceNameValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			msg := checkInstanceNameValidation(tt.args.insName)
+			msg := CheckInstanceNameValidation(tt.args.insName)
 			if msg != tt.errorMsg {
 				t.Errorf("checkInstanceNameValidation() unknown error = %s", msg)
 				return
@@ -276,7 +276,7 @@ func TestCheckInstancePropertiesValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			msg := checkInstancePropertiesValidation(tt.args.insprop)
+			msg := CheckInstancePropertiesValidation(tt.args.insprop)
 			if msg != tt.errorMsg {
 				t.Errorf("checkInstancePropertiesValidation() unknown error = %s", msg)
 				return

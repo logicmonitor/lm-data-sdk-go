@@ -2,10 +2,8 @@ package logs
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -16,8 +14,7 @@ import (
 )
 
 const (
-	logIngestURLFmtStr = "https://%s.logicmonitor.com/rest/log/ingest"
-	uri                = "/log/ingest"
+	uri = "/log/ingest"
 )
 
 var logBatch []model.LogInput
@@ -35,10 +32,10 @@ type LMLogIngest struct {
 func NewLMLogIngest(batch bool, interval int) *LMLogIngest {
 	client := http.Client{}
 	return &LMLogIngest{
+		Client:   &client,
+		URL:      utils.URL(),
 		Batch:    batch,
 		Interval: interval,
-		Client:   &client,
-		URL:      fmt.Sprintf(logIngestURLFmtStr, os.Getenv("LM_COMPANY")),
 	}
 }
 
@@ -64,11 +61,12 @@ func (lli LMLogIngest) SendLogs(logMessage string, resourceidMap, metadata map[s
 			Metadata:   metadata,
 			Timestamp:  timestamp,
 		}
-		singleReqBody, err := json.Marshal(body)
+		bodyarr := append([]model.LogPayload{}, body)
+		singleReqBody, err := json.Marshal(bodyarr)
 		if err != nil {
 			log.Println(err)
 		}
-		return lli.exportLogs(singleReqBody)
+		return lli.exportLogs(singleReqBody, uri, http.MethodPost)
 	}
 	return nil, nil
 }
@@ -90,7 +88,7 @@ func (lli *LMLogIngest) batchPoller() {
 				if err != nil {
 					log.Println("error..")
 				}
-				lli.exportLogs(body)
+				lli.exportLogs(body, uri, http.MethodPost)
 				lastTimeSend = currentTime
 			}
 		}
@@ -116,10 +114,10 @@ func createRestLogsBody() ([]byte, error) {
 	return body, err
 }
 
-func (lli *LMLogIngest) exportLogs(body []byte) (*utils.Response, error) {
-	resp, err := internal.MakeRequest(lli.Client, lli.URL, body, uri)
+func (lli *LMLogIngest) exportLogs(body []byte, uri, method string) (*utils.Response, error) {
+	resp, err := internal.MakeRequest(lli.Client, lli.URL, body, uri, method)
 	if err != nil {
-		log.Println("Error while sending logs.. ", resp.Message)
+		return resp, err
 	}
 	return resp, err
 }

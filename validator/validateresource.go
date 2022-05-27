@@ -19,9 +19,9 @@ func validateResource(resInput model.ResourceInput) string {
 	if resInput.ResourceDescription != "" {
 		errorMsg += checkResourceDescriptionValidation(resInput.ResourceName)
 	}
-	errorMsg += checkResourceIDValidation(resInput.ResourceID)
+	errorMsg += CheckResourceIDValidation(resInput.ResourceID)
 	if resInput.ResourceProperties != nil {
-		errorMsg += checkResourcePropertiesValidation(resInput.ResourceProperties)
+		errorMsg += CheckResourcePropertiesValidation(resInput.ResourceProperties)
 	}
 	return errorMsg
 }
@@ -50,7 +50,7 @@ func checkResourceDescriptionValidation(resDesc string) string {
 	return errorResMsg
 }
 
-func checkResourceIDValidation(resId map[string]string) string {
+func CheckResourceIDValidation(resId map[string]string) string {
 	errorResMsg := ""
 	if resId == nil || len(resId) == 0 {
 		errorResMsg = "Resource IDs is mandatory. "
@@ -74,7 +74,7 @@ func checkResourceIDValidation(resId map[string]string) string {
 	return errorResMsg
 }
 
-func checkResourcePropertiesValidation(resProp map[string]string) string {
+func CheckResourcePropertiesValidation(resProp map[string]string) string {
 	errorResMsg := ""
 	for key, value := range resProp {
 		if passEmptyAndSpellCheck(key) {

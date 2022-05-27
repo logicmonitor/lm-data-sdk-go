@@ -181,7 +181,7 @@ func TestCheckResourceIDValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			msg := checkResourceIDValidation(tt.args.resid)
+			msg := CheckResourceIDValidation(tt.args.resid)
 			if msg != tt.errorMsg {
 				t.Errorf("checkResourceIDValidation() unknown error = %s", msg)
 				return
@@ -264,7 +264,7 @@ func TestCheckResourcePropertiesValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			msg := checkResourcePropertiesValidation(tt.args.resprop)
+			msg := CheckResourcePropertiesValidation(tt.args.resprop)
 			if msg != tt.errorMsg {
 				t.Errorf("checkResourcePropertiesValidation() unknown error = %s", msg)
 				return

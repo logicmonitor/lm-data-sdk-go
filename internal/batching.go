@@ -8,24 +8,17 @@ import (
 	"github.com/logicmonitor/go-data-sdk/utils"
 )
 
-var ingestURL = "https://%s.logicmonitor.com/rest"
-
-// exportMetric compresses the payload and exports it to LM Platform
-func MakeRequest(client *http.Client, url string, body []byte, uri string) (*utils.Response, error) {
-
-	fmt.Println("Payload Body::", string(body))
-
-	token := utils.GetToken(http.MethodPost, body, uri)
-
-	//url := fmt.Sprintf(ingestURL, os.Getenv("LM_COMPANY")) + uri
-
+// MakeRequest compresses the payload and exports it to LM Platform
+func MakeRequest(client *http.Client, url string, body []byte, uri, method string) (*utils.Response, error) {
+	token := utils.GetToken(method, body, uri)
 	compressedBody, err := utils.Gzip(body)
 	if err != nil {
-		fmt.Println("compression error::", err.Error())
-		return nil, err
+		return nil, fmt.Errorf("error while compressing body: %v", err)
 	}
 	reqBody := bytes.NewBuffer(compressedBody)
-	req, err := http.NewRequest(http.MethodPost, url, reqBody)
+	fullURL := url + uri
+
+	req, err := http.NewRequest(method, fullURL, reqBody)
 	if err != nil {
 		return nil, err
 	}
@@ -33,8 +26,6 @@ func MakeRequest(client *http.Client, url string, body []byte, uri string) (*uti
 	req.Header.Add("Authorization", token)
 	req.Header.Add("User-Agent", utils.BuildUserAgent())
 	req.Header.Add("Content-Encoding", "gzip")
-
-	fmt.Println("Request..", req)
 
 	httpResp, err := client.Do(req)
 	if err != nil {

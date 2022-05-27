@@ -5,12 +5,18 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 )
+
+var ingestURL = "https://%s.logicmonitor.com/rest"
+
+const REGEX_COMPANY_NAME = "^[a-zA-Z0-9_.\\-]+$"
 
 type Lmv1Token struct {
 	AccessID  string
@@ -28,7 +34,7 @@ func GetToken(method string, body []byte, resourcePath string) string {
 	} else if bearerToken != "" {
 		token = "Bearer " + bearerToken
 	} else {
-		log.Fatal("Authenticate must provide environment variable `LM_ACCESS_ID` and `LM_ACCESS_KEY' OR 'LM_BEARER_TOKEN'")
+		log.Fatal("Authenticate must provide environment variable `LM_ACCESS_ID` and `LM_ACCESS_KEY` OR `LM_BEARER_TOKEN`")
 	}
 	return token
 }
@@ -80,4 +86,17 @@ func generateLMv1Token(method string, accessID string, accessKey string, body []
 		Signature: signature,
 		Epoch:     epochTime,
 	}
+}
+
+func URL() string {
+	company := os.Getenv("LM_COMPANY")
+	if company == "" {
+		log.Fatal("Environment variable `LM_COMPANY` must be provided")
+	} else {
+		match, _ := regexp.MatchString(REGEX_COMPANY_NAME, company)
+		if !match {
+			log.Fatal("Invalid Company Name")
+		}
+	}
+	return fmt.Sprintf(ingestURL, company)
 }

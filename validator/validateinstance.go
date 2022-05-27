@@ -32,20 +32,20 @@ func validateInstance(insInput model.InstanceInput) string {
 	}
 
 	if insName != "" {
-		errorMsg += checkInstanceNameValidation(insName)
+		errorMsg += CheckInstanceNameValidation(insName)
 	}
 
 	if insInput.InstanceDisplayName != "" {
 		errorMsg += checkInsDisplayNameValidation(insInput.InstanceDisplayName)
 	}
 	if insInput.InstanceProperties != nil {
-		errorMsg += checkInstancePropertiesValidation(insInput.InstanceProperties)
+		errorMsg += CheckInstancePropertiesValidation(insInput.InstanceProperties)
 	}
 
 	return errorMsg
 }
 
-func checkInstanceNameValidation(insName string) string {
+func CheckInstanceNameValidation(insName string) string {
 	errorInstMsg := ""
 	if passEmptyAndSpellCheck(insName) {
 		errorInstMsg = "Instance Name Should not be empty or have tailing spaces. "
@@ -82,7 +82,7 @@ func checkInstanceId(insID int) string {
 	return errorInsMsg
 }
 
-func checkInstancePropertiesValidation(insProp map[string]string) string {
+func CheckInstancePropertiesValidation(insProp map[string]string) string {
 	errorInsMsg := ""
 	for key, value := range insProp {
 		if passEmptyAndSpellCheck(key) {

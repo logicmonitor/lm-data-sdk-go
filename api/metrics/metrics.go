@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"sync"
 	"time"
 
@@ -16,8 +15,9 @@ import (
 )
 
 const (
-	metricsIngestURLFmtStr = "https://%s.logicmonitor.com/rest/metric/ingest"
-	uri                    = "/metric/ingest"
+	uri              = "/metric/ingest"
+	updateResPropURI = "/resource_property/ingest"
+	updateInsPropURI = "/instance_property/ingest"
 )
 
 var datapointMap map[string][]model.DataPointInput
@@ -38,7 +38,7 @@ func NewLMMetricIngest(batch bool, interval int) *LMMetricIngest {
 	client := http.Client{}
 	return &LMMetricIngest{
 		Client:   &client,
-		URL:      fmt.Sprintf(metricsIngestURLFmtStr, os.Getenv("LM_COMPANY")),
+		URL:      utils.URL(),
 		Batch:    batch,
 		Interval: interval,
 	}
@@ -69,11 +69,14 @@ func (lmi LMMetricIngest) SendMetrics(rInput model.ResourceInput, dsInput model.
 		payload := createSingleRequestBody(input)
 		body, err := json.Marshal(payload)
 		if err != nil {
-			log.Println(err)
+			log.Println("error in marshaling single metric payload: ", err)
 		}
-		resp, err := lmi.exportMetric(body)
+		resp, err := lmi.exportMetric(body, uri, http.MethodPost)
 		if err != nil {
-			log.Println("Error while sending metrics ", resp.Message)
+			if resp != nil {
+				log.Println("error response message while exporting single metric: ", resp.Message)
+			}
+			return resp, fmt.Errorf("error while exporting single metric: %v ", err)
 		}
 		return resp, err
 	}
@@ -147,15 +150,14 @@ func (lmi LMMetricIngest) mergeAndCreateRequestBody() error {
 	// after merging create metric payload
 	body, err := lmi.createRestMetricsBody()
 	if err != nil {
-		log.Println("error")
-		return err
+		return fmt.Errorf("error in creating metric payload")
 	}
-	resp, err := lmi.exportMetric(body)
+	resp, err := lmi.exportMetric(body, uri, http.MethodPost)
 	if err != nil {
 		if resp != nil {
-			log.Println("Response message: ", resp.Message)
+			log.Println("error response message while exporting batched metric: ", resp.Message)
 		}
-		return err
+		return fmt.Errorf("error while exporting batched metric: %v ", err)
 	}
 	return nil
 }
@@ -213,7 +215,7 @@ func (lmi *LMMetricIngest) createRestMetricsBody() ([]byte, error) {
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
-		log.Println(err)
+		return nil, fmt.Errorf("error in marshaling batched metric payload: %v", err)
 	}
 	// flushing out the cache after exporting
 	batchedReq = nil
@@ -221,10 +223,79 @@ func (lmi *LMMetricIngest) createRestMetricsBody() ([]byte, error) {
 	return body, err
 }
 
-func (lmi *LMMetricIngest) exportMetric(body []byte) (*utils.Response, error) {
-	resp, err := internal.MakeRequest(lmi.Client, lmi.URL, body, uri)
+func (lmi *LMMetricIngest) exportMetric(body []byte, uri, method string) (*utils.Response, error) {
+	resp, err := internal.MakeRequest(lmi.Client, lmi.URL, body, uri, method)
 	if err != nil {
-		log.Println("Error while sending logs.. ", resp.Message)
+		return resp, err
 	}
 	return resp, err
+}
+
+func (lmi *LMMetricIngest) UpdateResourceProperties(resIDs, resProps map[string]string, patch bool) (*utils.Response, error) {
+	if resIDs != nil {
+		validator.CheckResourceIDValidation(resIDs)
+	}
+	if resProps != nil {
+		validator.CheckResourcePropertiesValidation(resProps)
+	}
+	updateResProp := model.MetricPayload{
+		ResourceID:         resIDs,
+		ResourceProperties: resProps,
+	}
+	method := http.MethodPut
+	if patch {
+		method = http.MethodPatch
+	}
+	body, err := json.Marshal(updateResProp)
+	if err != nil {
+		return nil, fmt.Errorf("error in marshaling update resource properties: %v", err)
+	}
+	resp, err := lmi.exportMetric(body, updateResPropURI, method)
+	if err != nil {
+		return nil, fmt.Errorf("error in updating resource properties: %v", err)
+	}
+	return resp, nil
+}
+
+func (lmi *LMMetricIngest) UpdateInstanceProperties(resIDs, insProps map[string]string, dsName, dsDisplayName, insName string, patch bool) (*utils.Response, error) {
+	errorMsg := ""
+	if resIDs != nil {
+		errorMsg += validator.CheckResourceIDValidation(resIDs)
+	}
+	if insProps != nil {
+		errorMsg += validator.CheckInstancePropertiesValidation(insProps)
+	}
+	if insName != "" {
+		errorMsg += validator.CheckInstanceNameValidation(insName)
+	}
+	if dsName != "" {
+		errorMsg += validator.CheckDataSourceNameValidation(dsName)
+	}
+	if dsDisplayName != "" {
+		errorMsg += validator.CheckDSDisplayNameValidation(dsDisplayName)
+	}
+
+	if errorMsg != "" {
+		return &utils.Response{Message: errorMsg, Success: false}, fmt.Errorf("Validation failed!")
+	}
+
+	method := http.MethodPut
+	if patch {
+		method = http.MethodPatch
+	}
+	updateInsProp := model.MetricPayload{
+		ResourceID:            resIDs,
+		DataSourceName:        dsName,
+		DataSourceDisplayName: dsDisplayName,
+		Instances:             append([]model.Instance{}, model.Instance{InstanceName: insName, InstanceProperties: insProps}),
+	}
+	body, err := json.Marshal(updateInsProp)
+	if err != nil {
+		return nil, fmt.Errorf("error in marshaling update instance properties: %v", err)
+	}
+	resp, err := lmi.exportMetric(body, updateInsPropURI, method)
+	if err != nil {
+		return nil, fmt.Errorf("error in updating instance properties: %v", err)
+	}
+	return resp, nil
 }

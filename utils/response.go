@@ -32,6 +32,11 @@ func ConvertHTTPToIngestResponse(resp *http.Response) (*Response, error) {
 		ingestResponse.Message = fmt.Sprintf("Invalid Response! , Status Code: %d , Body: %s", resp.StatusCode, string(body[:]))
 		return ingestResponse, err
 	}
+	if !(resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusAccepted) {
+		ingestResponse.Success = false
+		ingestResponse.Message = fmt.Sprintf("Error caught while exporting... , Status Code: %d , Body: %s", resp.StatusCode, ingestResponse.Message)
+		return ingestResponse, err
+	}
 	ingestResponse.RequestID, _ = uuid.Parse(resp.Header.Get("x-request-id"))
 	return ingestResponse, nil
 }
