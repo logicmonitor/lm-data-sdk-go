@@ -2,7 +2,7 @@ package logs
 
 import (
 	"encoding/json"
-	"log"
+	"fmt"
 	"net/http"
 	"strconv"
 	"sync"
@@ -17,7 +17,10 @@ const (
 	uri = "/log/ingest"
 )
 
-var logBatch []model.LogInput
+var (
+	logBatch      []model.LogInput
+	logBatchMutex sync.Mutex
+)
 var lastTimeSend int64
 
 type LMLogIngest struct {
@@ -36,8 +39,7 @@ func NewLMLogIngest(batch bool, interval int) *LMLogIngest {
 		Interval: interval,
 	}
 	if batch {
-		go internal.BatchPoller(lli)
-		go internal.CheckFlag(lli)
+		go internal.CreateAndExportData(lli)
 	}
 	return &lli
 }
@@ -50,9 +52,8 @@ func (lli LMLogIngest) SendLogs(logMessage string, resourceidMap, metadata map[s
 		Metadata:   metadata,
 		Timestamp:  timestamp}
 
-	var m sync.Mutex
 	if lli.Batch {
-		addRequest(logsV1, &m)
+		addRequest(logsV1)
 	} else {
 		body := model.LogPayload{
 			Message:    logMessage,
@@ -63,16 +64,16 @@ func (lli LMLogIngest) SendLogs(logMessage string, resourceidMap, metadata map[s
 		bodyarr := append([]model.LogPayload{}, body)
 		singleReqBody, err := json.Marshal(bodyarr)
 		if err != nil {
-			log.Println(err)
+			return nil, fmt.Errorf("error while marshalling single request log json : %v", err)
 		}
 		return lli.ExportData(singleReqBody, uri, http.MethodPost)
 	}
 	return nil, nil
 }
 
-func addRequest(logInput model.LogInput, m *sync.Mutex) {
-	m.Lock()
-	defer m.Unlock()
+func addRequest(logInput model.LogInput) {
+	logBatchMutex.Lock()
+	defer logBatchMutex.Unlock()
 	logBatch = append(logBatch, logInput)
 }
 
@@ -85,10 +86,9 @@ func (lli LMLogIngest) URI() string {
 }
 
 func (lli LMLogIngest) CreateRequestBody() ([]byte, error) {
-	var m sync.Mutex
 	var logPayloadList []model.LogPayload
-	m.Lock()
-	defer m.Unlock()
+	logBatchMutex.Lock()
+	defer logBatchMutex.Unlock()
 	if len(logBatch) == 0 {
 		return nil, nil
 	}
@@ -103,7 +103,7 @@ func (lli LMLogIngest) CreateRequestBody() ([]byte, error) {
 	}
 	body, err := json.Marshal(logPayloadList)
 	if err != nil {
-		log.Println(err)
+		return nil, fmt.Errorf("error while marshalling batched request log json : %v", err)
 	}
 	// flushing out log batch
 	logBatch = nil

@@ -10,9 +10,6 @@ import (
 	"github.com/logicmonitor/go-data-sdk/utils"
 )
 
-var lastTimeSend int64
-var flag bool
-
 type LMIngest interface {
 	BatchInterval() int
 	URI() string
@@ -20,33 +17,19 @@ type LMIngest interface {
 	ExportData(body []byte, uri, method string) (*utils.Response, error)
 }
 
-// batchPoller checks for the batching interval
-// if current time exceeds the interval, then it creates request body by merging the requests present in buffer
-func BatchPoller(li LMIngest) {
-	for {
-		currentTime := time.Now().Unix()
-		if currentTime > (lastTimeSend + int64(li.BatchInterval())) {
-			flag = true
-			lastTimeSend = currentTime
+func CreateAndExportData(li LMIngest) {
+	ticker := time.NewTicker(time.Duration(li.BatchInterval()) * time.Second)
+	for range ticker.C {
+		body, err := li.CreateRequestBody()
+		if err != nil {
+			log.Println("error while creating request body: ", err)
 		}
-	}
-}
-
-func CheckFlag(li LMIngest) {
-	for {
-		if flag {
-			flag = false
-			body, err := li.CreateRequestBody()
+		if body != nil {
+			resp, err := li.ExportData(body, li.URI(), http.MethodPost)
 			if err != nil {
-				log.Println("error while creating request body: ", err)
+				log.Println("error while exporting data..", err)
 			}
-			if body != nil {
-				resp, err := li.ExportData(body, li.URI(), http.MethodPost)
-				if err != nil {
-					log.Println("error while exporting data..", err)
-				}
-				log.Println("Response: ", resp)
-			}
+			log.Println("Response Message: ", resp.Message)
 		}
 	}
 }

@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"sync"
 	"testing"
 
 	"github.com/logicmonitor/go-data-sdk/model"
@@ -174,7 +173,6 @@ func TestSendLogsBatch(t *testing.T) {
 }
 
 func TestAddRequest(t *testing.T) {
-	var m sync.Mutex
 	logInput := model.LogInput{
 		Message:    "This is 1st message",
 		ResourceID: map[string]string{"test": "resource"},
@@ -182,7 +180,7 @@ func TestAddRequest(t *testing.T) {
 		//Timestamp:  "",
 	}
 	before := len(logBatch)
-	addRequest(logInput, &m)
+	addRequest(logInput)
 	after := len(logBatch)
 	if after != (before + 1) {
 		t.Errorf("AddRequest() error = %s", "unable to add new request to cache")

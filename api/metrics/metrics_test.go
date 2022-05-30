@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"sync"
 	"testing"
 	"time"
 
@@ -248,11 +247,10 @@ func TestSendMetricsBatch(t *testing.T) {
 }
 
 func TestAddRequest(t *testing.T) {
-	var m sync.Mutex
 	prepareMetricsRequestCache()
 	newReq := getSingleRequest()
 	before := len(metricBatch)
-	addRequest(newReq, &m)
+	addRequest(newReq)
 	after := len(metricBatch)
 	if after != (before + 1) {
 		t.Errorf("AddRequest() error = %s", "unable to add new request to metrics cache")

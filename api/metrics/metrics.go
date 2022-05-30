@@ -23,7 +23,10 @@ var datapointMap map[string][]model.DataPointInput
 var instanceMap map[string][]model.InstanceInput
 var dsMap map[string]model.DatasourceInput
 var resourceMap map[string]model.ResourceInput
-var metricBatch []model.MetricsInput
+var (
+	metricBatch      []model.MetricsInput
+	metricBatchMutex sync.Mutex
+)
 var lastTimeSend int64
 
 type LMMetricIngest struct {
@@ -42,8 +45,7 @@ func NewLMMetricIngest(batch bool, interval int) *LMMetricIngest {
 		Interval: interval,
 	}
 	if batch {
-		go internal.BatchPoller(lmi)
-		go internal.CheckFlag(lmi)
+		go internal.CreateAndExportData(lmi)
 	}
 	return &lmi
 }
@@ -62,10 +64,8 @@ func (lmi LMMetricIngest) SendMetrics(rInput model.ResourceInput, dsInput model.
 		DataPoint:  dpInput,
 	}
 
-	var m sync.Mutex
 	if lmi.Batch {
-		go internal.BatchPoller(lmi)
-		addRequest(input, &m)
+		addRequest(input)
 	} else {
 		payload := createSingleRequestBody(input)
 		body, err := json.Marshal(payload)
@@ -107,23 +107,22 @@ func (lmi LMMetricIngest) BatchInterval() int {
 }
 
 // addRequest adds the metric request to batching cache if batching is enabled
-func addRequest(input model.MetricsInput, m *sync.Mutex) {
-	m.Lock()
-	defer m.Unlock()
+func addRequest(input model.MetricsInput) {
+	metricBatchMutex.Lock()
+	defer metricBatchMutex.Unlock()
 	metricBatch = append(metricBatch, input)
 }
 
 // mergeRequest merges the requests present in batching cache at the end of every batching interval
 func (lmi LMMetricIngest) CreateRequestBody() ([]byte, error) {
 	// merge the requests from map
-	var m sync.Mutex
 	resourceMap = make(map[string]model.ResourceInput)
 	dsMap = make(map[string]model.DatasourceInput)
 	instanceMap = make(map[string][]model.InstanceInput)
 	datapointMap = make(map[string][]model.DataPointInput)
 
-	m.Lock()
-	defer m.Unlock()
+	metricBatchMutex.Lock()
+	defer metricBatchMutex.Unlock()
 	if len(metricBatch) == 0 {
 		return nil, nil
 	}

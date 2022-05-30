@@ -12,6 +12,6 @@ const (
 )
 
 func BuildUserAgent() string {
-	userAgent := PACKAGE_VERSION + ";" + runtime.Version() + ";" + OS_NAME + ";arch " + ARCH
+	userAgent := PACKAGE_ID + PACKAGE_VERSION + ";" + runtime.Version() + ";" + OS_NAME + ";arch " + ARCH
 	return userAgent
 }
