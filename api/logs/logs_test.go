@@ -192,6 +192,21 @@ func TestAddRequest(t *testing.T) {
 }
 
 func TestCreateRestLogsBody(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		response := utils.Response{
+			Success: true,
+			Message: "Logs exported successfully!!",
+		}
+		body, _ := json.Marshal(response)
+		w.Write(body)
+	}))
+	e := &LMLogIngest{
+		Batch:    false,
+		Interval: 0,
+		Client:   ts.Client(),
+		URL:      ts.URL,
+	}
+
 	logInput1 := model.LogInput{
 		Message:    "This is 1st message",
 		ResourceID: map[string]string{"test": "resource"},
@@ -212,9 +227,9 @@ func TestCreateRestLogsBody(t *testing.T) {
 	}
 	logBatch = append(logBatch, logInput1, logInput2, logInput3)
 
-	_, err := createRestLogsBody()
+	_, err := e.CreateRequestBody()
 	if err != nil {
-		t.Errorf("createRestLogsBody() error = %v", err)
+		t.Errorf("CreateRequestBody() Logs error = %v", err)
 		return
 	}
 }

@@ -21,8 +21,6 @@ var logBatch []model.LogInput
 var lastTimeSend int64
 
 type LMLogIngest struct {
-	//LogSource string
-	//VersionID string
 	Client   *http.Client
 	URL      string
 	Batch    bool
@@ -31,16 +29,17 @@ type LMLogIngest struct {
 
 func NewLMLogIngest(batch bool, interval int) *LMLogIngest {
 	client := http.Client{}
-	return &LMLogIngest{
+	lli := LMLogIngest{
 		Client:   &client,
 		URL:      utils.URL(),
 		Batch:    batch,
 		Interval: interval,
 	}
-}
-
-func (lli LMLogIngest) Start() {
-	go lli.batchPoller()
+	if batch {
+		go internal.BatchPoller(lli)
+		go internal.CheckFlag(lli)
+	}
+	return &lli
 }
 
 func (lli LMLogIngest) SendLogs(logMessage string, resourceidMap, metadata map[string]string) (*utils.Response, error) {
@@ -66,7 +65,7 @@ func (lli LMLogIngest) SendLogs(logMessage string, resourceidMap, metadata map[s
 		if err != nil {
 			log.Println(err)
 		}
-		return lli.exportLogs(singleReqBody, uri, http.MethodPost)
+		return lli.ExportData(singleReqBody, uri, http.MethodPost)
 	}
 	return nil, nil
 }
@@ -77,26 +76,22 @@ func addRequest(logInput model.LogInput, m *sync.Mutex) {
 	logBatch = append(logBatch, logInput)
 }
 
-// batchPoller checks for the batching interval
-// if current time exceeds the interval, then it merges the request and create request body
-func (lli *LMLogIngest) batchPoller() {
-	for {
-		if len(logBatch) > 0 {
-			currentTime := time.Now().Unix()
-			if currentTime > (lastTimeSend + int64(lli.Interval)) {
-				body, err := createRestLogsBody()
-				if err != nil {
-					log.Println("error..")
-				}
-				lli.exportLogs(body, uri, http.MethodPost)
-				lastTimeSend = currentTime
-			}
-		}
-	}
+func (lli LMLogIngest) BatchInterval() int {
+	return lli.Interval
 }
 
-func createRestLogsBody() ([]byte, error) {
+func (lli LMLogIngest) URI() string {
+	return uri
+}
+
+func (lli LMLogIngest) CreateRequestBody() ([]byte, error) {
+	var m sync.Mutex
 	var logPayloadList []model.LogPayload
+	m.Lock()
+	defer m.Unlock()
+	if len(logBatch) == 0 {
+		return nil, nil
+	}
 	for _, logsV1 := range logBatch {
 		body := model.LogPayload{
 			Message:    logsV1.Message,
@@ -110,11 +105,17 @@ func createRestLogsBody() ([]byte, error) {
 	if err != nil {
 		log.Println(err)
 	}
+	// flushing out log batch
 	logBatch = nil
-	return body, err
+
+	// resp, err := lli.exportLogs(body, uri, http.MethodPost)
+	// if err != nil {
+	// 	return resp, err
+	// }
+	return body, nil
 }
 
-func (lli *LMLogIngest) exportLogs(body []byte, uri, method string) (*utils.Response, error) {
+func (lli LMLogIngest) ExportData(body []byte, uri, method string) (*utils.Response, error) {
 	resp, err := internal.MakeRequest(lli.Client, lli.URL, body, uri, method)
 	if err != nil {
 		return resp, err

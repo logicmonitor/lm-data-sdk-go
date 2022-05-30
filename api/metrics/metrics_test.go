@@ -187,14 +187,14 @@ func TestAddRequest(t *testing.T) {
 	var m sync.Mutex
 	prepareMetricsRequestCache()
 	newReq := getSingleRequest()
-	before := len(batchedReq)
+	before := len(metricBatch)
 	addRequest(newReq, &m)
-	after := len(batchedReq)
+	after := len(metricBatch)
 	if after != (before + 1) {
 		t.Errorf("AddRequest() error = %s", "unable to add new request to metrics cache")
 		return
 	}
-	batchedReq = nil
+	metricBatch = nil
 }
 
 func TestMergeRequest(t *testing.T) {
@@ -214,7 +214,7 @@ func TestMergeRequest(t *testing.T) {
 	}
 
 	prepareMetricsRequestCache()
-	err := e.mergeAndCreateRequestBody()
+	_, err := e.CreateRequestBody()
 	if instArray, ok := instanceMap["GoSDK"]; ok {
 		if len(instArray) != 2 {
 			t.Errorf("MergeRequest() error = %s", "unable to merge request properly")
@@ -225,7 +225,7 @@ func TestMergeRequest(t *testing.T) {
 		t.Errorf("error while exporting metric = %v", err)
 		return
 	}
-	batchedReq = nil
+	metricBatch = nil
 }
 
 func getInput() (model.ResourceInput, model.DatasourceInput, model.InstanceInput, model.DataPointInput) {
@@ -325,5 +325,5 @@ func prepareMetricsRequestCache() {
 		Instance:   insInput1,
 		DataPoint:  dpInput1,
 	}
-	batchedReq = append(batchedReq, mInput, mInput1)
+	metricBatch = append(metricBatch, mInput, mInput1)
 }
