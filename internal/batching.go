@@ -26,7 +26,6 @@ func BatchPoller(li LMIngest) {
 	for {
 		currentTime := time.Now().Unix()
 		if currentTime > (lastTimeSend + int64(li.BatchInterval())) {
-			fmt.Println("Time exceeded........")
 			flag = true
 			lastTimeSend = currentTime
 		}
@@ -37,7 +36,6 @@ func CheckFlag(li LMIngest) {
 	for {
 		if flag {
 			flag = false
-			fmt.Println("Flag:: flag is true")
 			body, err := li.CreateRequestBody()
 			if err != nil {
 				log.Println("error while creating request body: ", err)

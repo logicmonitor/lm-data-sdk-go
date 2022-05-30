@@ -72,14 +72,7 @@ func (lmi LMMetricIngest) SendMetrics(rInput model.ResourceInput, dsInput model.
 		if err != nil {
 			log.Println("error in marshaling single metric payload: ", err)
 		}
-		resp, err := lmi.ExportData(body, uri, http.MethodPost)
-		if err != nil {
-			if resp != nil {
-				log.Println("error response message while exporting single metric: ", resp.Message)
-			}
-			return resp, fmt.Errorf("error while exporting single metric: %v ", err)
-		}
-		return resp, err
+		return lmi.ExportData(body, uri, http.MethodPost)
 	}
 	return nil, nil
 }
@@ -227,11 +220,16 @@ func (lmi LMMetricIngest) ExportData(body []byte, uri, method string) (*utils.Re
 }
 
 func (lmi LMMetricIngest) UpdateResourceProperties(resIDs, resProps map[string]string, patch bool) (*utils.Response, error) {
+	errorMsg := ""
 	if resIDs != nil {
-		validator.CheckResourceIDValidation(resIDs)
+		errorMsg += validator.CheckResourceIDValidation(resIDs)
 	}
 	if resProps != nil {
-		validator.CheckResourcePropertiesValidation(resProps)
+		errorMsg += validator.CheckResourcePropertiesValidation(resProps)
+	}
+
+	if errorMsg != "" {
+		return nil, fmt.Errorf("Validation failed: %v ", errorMsg)
 	}
 	updateResProp := model.MetricPayload{
 		ResourceID:         resIDs,
@@ -271,7 +269,7 @@ func (lmi LMMetricIngest) UpdateInstanceProperties(resIDs, insProps map[string]s
 	}
 
 	if errorMsg != "" {
-		return &utils.Response{Message: errorMsg, Success: false}, fmt.Errorf("Validation failed!")
+		return nil, fmt.Errorf("Validation failed: %v", errorMsg)
 	}
 
 	method := http.MethodPut

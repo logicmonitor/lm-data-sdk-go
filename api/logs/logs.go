@@ -108,10 +108,6 @@ func (lli LMLogIngest) CreateRequestBody() ([]byte, error) {
 	// flushing out log batch
 	logBatch = nil
 
-	// resp, err := lli.exportLogs(body, uri, http.MethodPost)
-	// if err != nil {
-	// 	return resp, err
-	// }
 	return body, nil
 }
 
