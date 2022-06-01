@@ -234,7 +234,9 @@ func (lmi *LMMetricIngest) ExportData(body []byte, uri, method string) (*utils.R
 		return resp, err
 	}
 	// flushing out the metric batch after exporting
-	metricBatch = nil
+	if lmi.batch {
+		metricBatch = nil
+	}
 	return resp, err
 }
 

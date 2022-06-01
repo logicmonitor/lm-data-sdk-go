@@ -1,4 +1,4 @@
-module github.com/logicmonitor/go-data-sdk
+module github.com/logicmonitor/lm-data-sdk-go
 
 go 1.17
 

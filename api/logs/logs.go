@@ -114,6 +114,8 @@ func (lli *LMLogIngest) ExportData(body []byte, uri, method string) (*utils.Resp
 		return resp, err
 	}
 	// flushing out log batch
-	logBatch = nil
+	if lli.batch {
+		logBatch = nil
+	}
 	return resp, err
 }
