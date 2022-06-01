@@ -24,19 +24,28 @@ type Lmv1Token struct {
 	Epoch     time.Time
 }
 
-func GetToken(method string, body []byte, resourcePath string) string {
+func GetToken(method string, body []byte, resourcePath string) (string, error) {
 	accessID := os.Getenv("LM_ACCESS_ID")
+	if accessID == "" {
+		accessID = os.Getenv("LOGICMONITOR_ACCESS_ID")
+	}
 	accessKey := os.Getenv("LM_ACCESS_KEY")
+	if accessKey == "" {
+		accessKey = os.Getenv("LOGICMONITOR_ACCESS_KEY")
+	}
 	bearerToken := os.Getenv("LM_BEARER_TOKEN")
+	if bearerToken == "" {
+		bearerToken = os.Getenv("LOGICMONITOR_BEARER_TOKEN")
+	}
 	var token string
 	if accessID != "" && accessKey != "" {
 		token = generateLMv1Token(method, accessID, accessKey, body, resourcePath).String()
 	} else if bearerToken != "" {
 		token = "Bearer " + bearerToken
 	} else {
-		log.Fatal("Authenticate must provide environment variable `LM_ACCESS_ID` and `LM_ACCESS_KEY` OR `LM_BEARER_TOKEN`")
+		return "", fmt.Errorf("Authenticate must provide environment variable `LM_ACCESS_ID` and `LM_ACCESS_KEY` OR `LM_BEARER_TOKEN`")
 	}
-	return token
+	return token, nil
 }
 
 func (t *Lmv1Token) String() string {
@@ -91,11 +100,13 @@ func generateLMv1Token(method string, accessID string, accessKey string, body []
 func URL() string {
 	company := os.Getenv("LM_COMPANY")
 	if company == "" {
-		log.Fatal("Environment variable `LM_COMPANY` must be provided")
+		if company = os.Getenv("LOGICMONITOR_COMPANY"); company == "" {
+			log.Println("Environment variable `LM_COMPANY` must be provided")
+		}
 	} else {
 		match, _ := regexp.MatchString(REGEX_COMPANY_NAME, company)
 		if !match {
-			log.Fatal("Invalid Company Name")
+			log.Println("Invalid Company Name")
 		}
 	}
 	return fmt.Sprintf(ingestURL, company)

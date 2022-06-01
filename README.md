@@ -24,7 +24,7 @@ All properties can be set using environment variable.
 
 ### Metrics Ingestion:
 For metrics ingestion, user must create a object of ResourceInput, DataSourceInput, InstanceInput and DataPointInput using `github.com/logicmonitor/go-data-sdk/model`.
-Create NewLMMetricIngest by passing batch as true (if batching to be enabled) and interval values as parameters. Then call SendMetrics by passing all the attributes as input parameters.
+Create NewLMMetricIngest by passing batch as true (if batching to be enabled) and interval (value in seconds) as parameters. Then call SendMetrics by passing all the attributes as input parameters.
 
     // fill the values
 	rInput := model.ResourceInput{

@@ -36,7 +36,10 @@ func CreateAndExportData(li LMIngest) {
 
 // MakeRequest compresses the payload and exports it to LM Platform
 func MakeRequest(client *http.Client, url string, body []byte, uri, method string) (*utils.Response, error) {
-	token := utils.GetToken(method, body, uri)
+	token, err := utils.GetToken(method, body, uri)
+	if err != nil {
+		return nil, err
+	}
 	compressedBody, err := utils.Gzip(body)
 	if err != nil {
 		return nil, fmt.Errorf("error while compressing body: %v", err)

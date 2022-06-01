@@ -97,10 +97,10 @@ func TestSendLogs(t *testing.T) {
 		os.Setenv("LM_ACCESS_ID", "weryuifsjkf")
 		os.Setenv("LM_ACCESS_KEY", "@dfsd4FDf999999FDE")
 		e := &LMLogIngest{
-			Batch:    test.fields.batch,
-			Interval: test.fields.interval,
-			Client:   test.fields.client,
-			URL:      test.fields.url,
+			batch:    test.fields.batch,
+			interval: test.fields.interval,
+			client:   test.fields.client,
+			url:      test.fields.url,
 		}
 		_, err := e.SendLogs(test.args.log, test.args.resourceId, test.args.metadata)
 		if err != nil {
@@ -159,10 +159,10 @@ func TestSendLogsBatch(t *testing.T) {
 		os.Setenv("LM_ACCESS_ID", "weryuifsjkf")
 		os.Setenv("LM_ACCESS_KEY", "@dfsd4FDf999999FDE")
 		e := &LMLogIngest{
-			Batch:    test.fields.batch,
-			Interval: test.fields.interval,
-			Client:   test.fields.client,
-			URL:      test.fields.url,
+			batch:    test.fields.batch,
+			interval: test.fields.interval,
+			client:   test.fields.client,
+			url:      test.fields.url,
 		}
 		_, err := e.SendLogs(test.args.log, test.args.resourceId, test.args.metadata)
 		if err != nil {
@@ -199,10 +199,10 @@ func TestCreateRestLogsBody(t *testing.T) {
 		w.Write(body)
 	}))
 	e := &LMLogIngest{
-		Batch:    false,
-		Interval: 0,
-		Client:   ts.Client(),
-		URL:      ts.URL,
+		batch:    false,
+		interval: 0,
+		client:   ts.Client(),
+		url:      ts.URL,
 	}
 
 	logInput1 := model.LogInput{

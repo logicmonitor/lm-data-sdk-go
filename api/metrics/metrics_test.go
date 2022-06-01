@@ -101,10 +101,10 @@ func TestSendMetrics(t *testing.T) {
 
 		setEnv()
 		e := &LMMetricIngest{
-			Batch:    test.fields.batch,
-			Interval: test.fields.interval,
-			Client:   test.fields.client,
-			URL:      test.fields.url,
+			batch:    test.fields.batch,
+			interval: test.fields.interval,
+			client:   test.fields.client,
+			url:      test.fields.url,
 		}
 		_, err := e.SendMetrics(test.args.rInput, test.args.dsInput, test.args.instInput, test.args.dpInput)
 		if err != nil {
@@ -167,10 +167,10 @@ func TestSendMetricsError(t *testing.T) {
 
 		setEnv()
 		e := &LMMetricIngest{
-			Batch:    test.fields.batch,
-			Interval: test.fields.interval,
-			Client:   test.fields.client,
-			URL:      test.fields.url,
+			batch:    test.fields.batch,
+			interval: test.fields.interval,
+			client:   test.fields.client,
+			url:      test.fields.url,
 		}
 		_, err := e.SendMetrics(test.args.rInput, test.args.dsInput, test.args.instInput, test.args.dpInput)
 		if err == nil {
@@ -232,10 +232,10 @@ func TestSendMetricsBatch(t *testing.T) {
 
 		setEnv()
 		e := &LMMetricIngest{
-			Batch:    test.fields.batch,
-			Interval: test.fields.interval,
-			Client:   test.fields.client,
-			URL:      test.fields.url,
+			batch:    test.fields.batch,
+			interval: test.fields.interval,
+			client:   test.fields.client,
+			url:      test.fields.url,
 		}
 		_, err := e.SendMetrics(test.args.rInput, test.args.dsInput, test.args.instInput, test.args.dpInput)
 		if err != nil {
@@ -269,10 +269,10 @@ func TestMergeRequest(t *testing.T) {
 		w.Write(body)
 	}))
 	e := &LMMetricIngest{
-		Batch:    true,
-		Interval: 10,
-		Client:   ts.Client(),
-		URL:      ts.URL,
+		batch:    true,
+		interval: 10,
+		client:   ts.Client(),
+		url:      ts.URL,
 	}
 
 	prepareMetricsRequestCache()
@@ -437,10 +437,10 @@ func TestUpdateResourceProperties(t *testing.T) {
 
 		setEnv()
 		e := &LMMetricIngest{
-			Batch:    test.fields.batch,
-			Interval: test.fields.interval,
-			Client:   test.fields.client,
-			URL:      test.fields.url,
+			batch:    test.fields.batch,
+			interval: test.fields.interval,
+			client:   test.fields.client,
+			url:      test.fields.url,
 		}
 		_, err := e.UpdateResourceProperties(test.args.rId, test.args.resProp, test.args.patch)
 		if err != nil {
@@ -498,10 +498,10 @@ func TestUpdateResourcePropertiesValidation(t *testing.T) {
 
 		setEnv()
 		e := &LMMetricIngest{
-			Batch:    test.fields.batch,
-			Interval: test.fields.interval,
-			Client:   test.fields.client,
-			URL:      test.fields.url,
+			batch:    test.fields.batch,
+			interval: test.fields.interval,
+			client:   test.fields.client,
+			url:      test.fields.url,
 		}
 		_, err := e.UpdateResourceProperties(test.args.rId, test.args.resProp, test.args.patch)
 		if err == nil {
@@ -560,10 +560,10 @@ func TestUpdateResourcePropertiesError(t *testing.T) {
 
 		setEnv()
 		e := &LMMetricIngest{
-			Batch:    test.fields.batch,
-			Interval: test.fields.interval,
-			Client:   test.fields.client,
-			URL:      test.fields.url,
+			batch:    test.fields.batch,
+			interval: test.fields.interval,
+			client:   test.fields.client,
+			url:      test.fields.url,
 		}
 		_, err := e.UpdateResourceProperties(test.args.rId, test.args.resProp, test.args.patch)
 		if err == nil {
@@ -627,10 +627,10 @@ func TestUpdateInstanceProperties(t *testing.T) {
 
 		setEnv()
 		e := &LMMetricIngest{
-			Batch:    test.fields.batch,
-			Interval: test.fields.interval,
-			Client:   test.fields.client,
-			URL:      test.fields.url,
+			batch:    test.fields.batch,
+			interval: test.fields.interval,
+			client:   test.fields.client,
+			url:      test.fields.url,
 		}
 		_, err := e.UpdateInstanceProperties(test.args.rId, test.args.insProp, test.args.dsName, test.args.dsDisplayName, test.args.insName, test.args.patch)
 		if err != nil {
@@ -695,10 +695,10 @@ func TestUpdateInstancePropertiesValidation(t *testing.T) {
 
 		setEnv()
 		e := &LMMetricIngest{
-			Batch:    test.fields.batch,
-			Interval: test.fields.interval,
-			Client:   test.fields.client,
-			URL:      test.fields.url,
+			batch:    test.fields.batch,
+			interval: test.fields.interval,
+			client:   test.fields.client,
+			url:      test.fields.url,
 		}
 		_, err := e.UpdateInstanceProperties(test.args.rId, test.args.insProp, test.args.dsName, test.args.dsDisplayName, test.args.insName, test.args.patch)
 		if err == nil {
@@ -764,10 +764,10 @@ func TestUpdateInstancePropertiesError(t *testing.T) {
 
 		setEnv()
 		e := &LMMetricIngest{
-			Batch:    test.fields.batch,
-			Interval: test.fields.interval,
-			Client:   test.fields.client,
-			URL:      test.fields.url,
+			batch:    test.fields.batch,
+			interval: test.fields.interval,
+			client:   test.fields.client,
+			url:      test.fields.url,
 		}
 		_, err := e.UpdateInstanceProperties(test.args.rId, test.args.insProp, test.args.dsName, test.args.dsDisplayName, test.args.insName, test.args.patch)
 		if err == nil {
