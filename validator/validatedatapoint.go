@@ -15,9 +15,15 @@ func validateDatapoint(dpInput model.DataPointInput) string {
 	errorMsg := ""
 	var dpValue string
 	errorMsg += checkDataPointNameValidation(dpInput.DataPointName)
-	errorMsg += checkDataPointAggregationTypeValidation(dpInput.DataPointAggregationType)
-	errorMsg += checkDataPointDescriptionValidation(dpInput.DataPointDescription)
-	errorMsg += checkDataPointTypeValidation(dpInput.DataPointType)
+	if dpInput.DataPointDescription != "" {
+		errorMsg += checkDataPointDescriptionValidation(dpInput.DataPointDescription)
+	}
+	if dpInput.DataPointAggregationType != "" {
+		errorMsg += checkDataPointAggregationTypeValidation(dpInput.DataPointAggregationType)
+	}
+	if dpInput.DataPointType != "" {
+		errorMsg += checkDataPointTypeValidation(dpInput.DataPointType)
+	}
 	for _, value := range dpInput.Value {
 		dpValue = value
 	}

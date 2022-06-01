@@ -17,6 +17,8 @@ const (
 	uri              = "/metric/ingest"
 	updateResPropURI = "/resource_property/ingest"
 	updateInsPropURI = "/instance_property/ingest"
+	defaultAggType   = "none"
+	defaultDPType    = "GAUGE"
 )
 
 var datapointMap map[string][]model.DataPointInput
@@ -57,6 +59,7 @@ func (lmi LMMetricIngest) SendMetrics(rInput model.ResourceInput, dsInput model.
 		log.Fatal(errorMsg)
 	}
 
+	dsInput, instInput, dpInput = setDefaultValues(dsInput, instInput, dpInput)
 	input := model.MetricsInput{
 		Resource:   rInput,
 		Datasource: dsInput,
@@ -75,6 +78,25 @@ func (lmi LMMetricIngest) SendMetrics(rInput model.ResourceInput, dsInput model.
 		return lmi.ExportData(body, uri, http.MethodPost)
 	}
 	return nil, nil
+}
+
+func setDefaultValues(dsInput model.DatasourceInput, instInput model.InstanceInput, dpInput model.DataPointInput) (model.DatasourceInput, model.InstanceInput, model.DataPointInput) {
+	if dsInput.DataSourceDisplayName == "" {
+		dsInput.DataSourceDisplayName = dsInput.DataSourceName
+	}
+	if instInput.InstanceDisplayName == "" {
+		instInput.InstanceDisplayName = instInput.InstanceName
+	}
+	if dpInput.DataPointDescription == "" {
+		dpInput.DataPointDescription = dpInput.DataPointName
+	}
+	if dpInput.DataPointAggregationType == "" {
+		dpInput.DataPointAggregationType = defaultAggType
+	}
+	if dpInput.DataPointType == "" {
+		dpInput.DataPointType = defaultDPType
+	}
+	return dsInput, instInput, dpInput
 }
 
 func createSingleRequestBody(input model.MetricsInput) model.MetricPayload {
