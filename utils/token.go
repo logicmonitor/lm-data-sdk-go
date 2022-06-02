@@ -100,7 +100,7 @@ func generateLMv1Token(method string, accessID string, accessKey string, body []
 func URL() string {
 	company := os.Getenv("LM_COMPANY")
 	if company == "" {
-		if company = os.Getenv("LOGICMONITOR_COMPANY"); company == "" {
+		if company = os.Getenv("LOGICMONITOR_ACCOUNT"); company == "" {
 			log.Println("Environment variable `LM_COMPANY` must be provided")
 		}
 	} else {
