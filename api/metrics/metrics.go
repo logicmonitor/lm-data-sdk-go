@@ -1,10 +1,12 @@
 package metrics
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/logicmonitor/lm-data-sdk-go/internal"
 	"github.com/logicmonitor/lm-data-sdk-go/model"
@@ -28,7 +30,6 @@ var (
 	metricBatch      []model.MetricsInput
 	metricBatchMutex sync.Mutex
 )
-var lastTimeSend int64
 
 type LMMetricIngest struct {
 	client   *http.Client
@@ -38,7 +39,11 @@ type LMMetricIngest struct {
 }
 
 func NewLMMetricIngest(batch bool, interval int) *LMMetricIngest {
-	client := http.Client{}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: false, MinVersion: tls.VersionTLS12}
+	clientTransport := (http.RoundTripper)(transport)
+	client := http.Client{Transport: clientTransport, Timeout: 5 * time.Second}
+
 	lmi := LMMetricIngest{
 		client:   &client,
 		url:      utils.URL(),
@@ -225,6 +230,10 @@ func (lmi *LMMetricIngest) createRestMetricsPayload() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error in marshaling batched metric payload: %v", err)
 	}
+	// flushing out the metric batch after exporting
+	if lmi.batch {
+		metricBatch = nil
+	}
 	return body, err
 }
 
@@ -232,10 +241,6 @@ func (lmi *LMMetricIngest) ExportData(body []byte, uri, method string) (*utils.R
 	resp, err := internal.MakeRequest(lmi.client, lmi.url, body, uri, method)
 	if err != nil {
 		return resp, err
-	}
-	// flushing out the metric batch after exporting
-	if lmi.batch {
-		metricBatch = nil
 	}
 	return resp, err
 }

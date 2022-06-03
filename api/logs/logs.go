@@ -1,6 +1,7 @@
 package logs
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -21,7 +22,6 @@ var (
 	logBatch      []model.LogInput
 	logBatchMutex sync.Mutex
 )
-var lastTimeSend int64
 
 type LMLogIngest struct {
 	client   *http.Client
@@ -31,7 +31,11 @@ type LMLogIngest struct {
 }
 
 func NewLMLogIngest(batch bool, interval int) *LMLogIngest {
-	client := http.Client{}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: false, MinVersion: tls.VersionTLS12}
+	clientTransport := (http.RoundTripper)(transport)
+	client := http.Client{Transport: clientTransport, Timeout: 5 * time.Second}
+
 	lli := LMLogIngest{
 		client:   &client,
 		url:      utils.URL(),
@@ -105,6 +109,10 @@ func (lli *LMLogIngest) CreateRequestBody() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error while marshalling batched request log json : %v", err)
 	}
+	// flushing out log batch
+	if lli.batch {
+		logBatch = nil
+	}
 	return body, nil
 }
 
@@ -112,10 +120,6 @@ func (lli *LMLogIngest) ExportData(body []byte, uri, method string) (*utils.Resp
 	resp, err := internal.MakeRequest(lli.client, lli.url, body, uri, method)
 	if err != nil {
 		return resp, err
-	}
-	// flushing out log batch
-	if lli.batch {
-		logBatch = nil
 	}
 	return resp, err
 }
