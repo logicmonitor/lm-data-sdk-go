@@ -7,8 +7,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/logicmonitor/go-data-sdk/model"
-	"github.com/logicmonitor/go-data-sdk/utils"
+	"github.com/logicmonitor/lm-data-sdk-go/model"
+	"github.com/logicmonitor/lm-data-sdk-go/utils"
 )
 
 func TestNewLMLogIngest(t *testing.T) {

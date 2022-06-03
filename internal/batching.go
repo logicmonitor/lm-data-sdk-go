@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/logicmonitor/go-data-sdk/utils"
+	"github.com/logicmonitor/lm-data-sdk-go/utils"
 )
 
 type LMIngest interface {

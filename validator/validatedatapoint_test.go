@@ -3,7 +3,7 @@ package validator
 import (
 	"testing"
 
-	"github.com/logicmonitor/go-data-sdk/model"
+	"github.com/logicmonitor/lm-data-sdk-go/model"
 )
 
 func TestValidateDataPoint(t *testing.T) {

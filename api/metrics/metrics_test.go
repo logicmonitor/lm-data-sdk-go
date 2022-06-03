@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/logicmonitor/go-data-sdk/model"
-	"github.com/logicmonitor/go-data-sdk/utils"
+	"github.com/logicmonitor/lm-data-sdk-go/model"
+	"github.com/logicmonitor/lm-data-sdk-go/utils"
 )
 
 func TestNewLMMetricIngest(t *testing.T) {

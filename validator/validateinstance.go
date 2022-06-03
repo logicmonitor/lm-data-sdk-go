@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/logicmonitor/go-data-sdk/model"
+	"github.com/logicmonitor/lm-data-sdk-go/model"
 )
 
 const (

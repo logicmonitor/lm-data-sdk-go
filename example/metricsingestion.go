@@ -4,17 +4,17 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/logicmonitor/go-data-sdk/api/metrics"
-	"github.com/logicmonitor/go-data-sdk/model"
+	"github.com/logicmonitor/lm-data-sdk-go/api/metrics"
+	"github.com/logicmonitor/lm-data-sdk-go/model"
 )
 
 func main_metrics() {
 
 	// fill the values
 	rInput := model.ResourceInput{
-		ResourceName: "threat-hunters-hackathon-demo_OTEL_71086",
+		ResourceName: "demo_OTEL_71086",
 		//ResourceDescription: "Testing",
-		ResourceID: map[string]string{"system.displayname": "threat-hunters-hackathon-demo_OTEL_71086"},
+		ResourceID: map[string]string{"system.displayname": "demo_OTEL_71086"},
 	}
 
 	dsInput := model.DatasourceInput{
@@ -43,9 +43,9 @@ func main_metrics() {
 
 	// fill the values
 	rInput1 := model.ResourceInput{
-		ResourceName: "threat-hunters-hackathon-demo_OTEL_71086",
+		ResourceName: "demo_OTEL_71086",
 		//ResourceDescription: "Testing",
-		ResourceID: map[string]string{"system.displayname": "threat-hunters-hackathon-demo_OTEL_71086"},
+		ResourceID: map[string]string{"system.displayname": "demo_OTEL_71086"},
 	}
 
 	dsInput1 := model.DatasourceInput{
@@ -73,9 +73,9 @@ func main_metrics() {
 
 	// fill the values
 	rInput2 := model.ResourceInput{
-		ResourceName: "threat-hunters-hackathon-demo_OTEL_71086",
+		ResourceName: "demo_OTEL_71086",
 		//ResourceDescription: "Testing",
-		ResourceID: map[string]string{"system.displayname": "threat-hunters-hackathon-demo_OTEL_71086"},
+		ResourceID: map[string]string{"system.displayname": "demo_OTEL_71086"},
 	}
 
 	dsInput2 := model.DatasourceInput{

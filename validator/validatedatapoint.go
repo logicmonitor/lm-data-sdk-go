@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/logicmonitor/go-data-sdk/model"
+	"github.com/logicmonitor/lm-data-sdk-go/model"
 )
 
 const REGEX_DATA_POINT = "^[a-zA-Z_0-9]+$"

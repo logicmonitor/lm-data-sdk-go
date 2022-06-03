@@ -4,7 +4,7 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/logicmonitor/go-data-sdk/model"
+	"github.com/logicmonitor/lm-data-sdk-go/model"
 )
 
 func TestValidateResource(t *testing.T) {

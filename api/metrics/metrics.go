@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/logicmonitor/go-data-sdk/internal"
-	"github.com/logicmonitor/go-data-sdk/model"
-	"github.com/logicmonitor/go-data-sdk/utils"
-	"github.com/logicmonitor/go-data-sdk/validator"
+	"github.com/logicmonitor/lm-data-sdk-go/internal"
+	"github.com/logicmonitor/lm-data-sdk-go/model"
+	"github.com/logicmonitor/lm-data-sdk-go/utils"
+	"github.com/logicmonitor/lm-data-sdk-go/validator"
 )
 
 const (
