@@ -7,29 +7,29 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/logicmonitor/lm-data-sdk-go/model"
 	"github.com/logicmonitor/lm-data-sdk-go/utils"
 )
+
+type DataPayload struct {
+	MetricBodyList []model.MetricPayload
+	LogBodyList    []model.LogPayload
+}
 
 type LMIngest interface {
 	BatchInterval() int
 	URI() string
-	CreateRequestBody() ([]byte, error)
-	ExportData(body []byte, uri, method string) (*utils.Response, error)
+	CreateRequestBody() DataPayload
+	ExportData(body DataPayload, uri, method string) (*utils.Response, error)
 }
 
 func CreateAndExportData(li LMIngest) {
 	ticker := time.NewTicker(time.Duration(li.BatchInterval()) * time.Second)
 	for range ticker.C {
-		body, err := li.CreateRequestBody()
+		body := li.CreateRequestBody()
+		_, err := li.ExportData(body, li.URI(), http.MethodPost)
 		if err != nil {
-			log.Println("error while creating request body: ", err)
-		}
-		if body != nil {
-			resp, err := li.ExportData(body, li.URI(), http.MethodPost)
-			if err != nil {
-				log.Println("error while exporting data..", err)
-			}
-			log.Println("Response Message: ", resp.Message)
+			log.Println("error while exporting data..", err)
 		}
 	}
 }

@@ -66,11 +66,10 @@ func (lli *LMLogIngest) SendLogs(logMessage string, resourceidMap, metadata map[
 			Timestamp:  timestamp,
 		}
 		bodyarr := append([]model.LogPayload{}, body)
-		singleReqBody, err := json.Marshal(bodyarr)
-		if err != nil {
-			return nil, fmt.Errorf("error while marshalling single request log json : %v", err)
+		logPayloadList := internal.DataPayload{
+			LogBodyList: bodyarr,
 		}
-		return lli.ExportData(singleReqBody, uri, http.MethodPost)
+		return lli.ExportData(logPayloadList, uri, http.MethodPost)
 	}
 	return nil, nil
 }
@@ -89,12 +88,12 @@ func (lli *LMLogIngest) URI() string {
 	return uri
 }
 
-func (lli *LMLogIngest) CreateRequestBody() ([]byte, error) {
+func (lli *LMLogIngest) CreateRequestBody() internal.DataPayload {
 	var logPayloadList []model.LogPayload
 	logBatchMutex.Lock()
 	defer logBatchMutex.Unlock()
 	if len(logBatch) == 0 {
-		return nil, nil
+		return internal.DataPayload{}
 	}
 	for _, logsV1 := range logBatch {
 		body := model.LogPayload{
@@ -105,18 +104,21 @@ func (lli *LMLogIngest) CreateRequestBody() ([]byte, error) {
 		}
 		logPayloadList = append(logPayloadList, body)
 	}
-	body, err := json.Marshal(logPayloadList)
-	if err != nil {
-		return nil, fmt.Errorf("error while marshalling batched request log json : %v", err)
+	payloadList := internal.DataPayload{
+		LogBodyList: logPayloadList,
 	}
 	// flushing out log batch
 	if lli.batch {
 		logBatch = nil
 	}
-	return body, nil
+	return payloadList
 }
 
-func (lli *LMLogIngest) ExportData(body []byte, uri, method string) (*utils.Response, error) {
+func (lli *LMLogIngest) ExportData(payloadList internal.DataPayload, uri, method string) (*utils.Response, error) {
+	body, err := json.Marshal(payloadList.LogBodyList)
+	if err != nil {
+		return nil, fmt.Errorf("error in marshaling log payload: %v", err)
+	}
 	resp, err := internal.MakeRequest(lli.client, lli.url, body, uri, method)
 	if err != nil {
 		return resp, err
