@@ -199,7 +199,7 @@ func TestCreateRestLogsBody(t *testing.T) {
 		w.Write(body)
 	}))
 	e := &LMLogIngest{
-		batch:    false,
+		batch:    true,
 		interval: 0,
 		client:   ts.Client(),
 		url:      ts.URL,
@@ -225,9 +225,9 @@ func TestCreateRestLogsBody(t *testing.T) {
 	}
 	logBatch = append(logBatch, logInput1, logInput2, logInput3)
 
-	_, err := e.CreateRequestBody()
-	if err != nil {
-		t.Errorf("CreateRequestBody() Logs error = %v", err)
+	body := e.CreateRequestBody()
+	if body.LogBodyList == nil {
+		t.Errorf("CreateRequestBody() Logs error = unable to create log request body")
 		return
 	}
 }

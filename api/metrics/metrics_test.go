@@ -276,15 +276,15 @@ func TestMergeRequest(t *testing.T) {
 	}
 
 	prepareMetricsRequestCache()
-	_, err := e.CreateRequestBody()
+	body := e.CreateRequestBody()
 	if instArray, ok := instanceMap["GoSDK"]; ok {
 		if len(instArray) != 2 {
 			t.Errorf("MergeRequest() error = %s", "unable to merge request properly")
 			return
 		}
 	}
-	if err != nil {
-		t.Errorf("error while exporting metric = %v", err)
+	if body.MetricBodyList == nil {
+		t.Errorf("error while creating metric request body..")
 		return
 	}
 	metricBatch = nil
@@ -297,9 +297,8 @@ func getInput() (model.ResourceInput, model.DatasourceInput, model.InstanceInput
 	}
 
 	dsInput1 := model.DatasourceInput{
-		DataSourceName:        "GoSDK",
-		DataSourceDisplayName: "GoSDK",
-		DataSourceGroup:       "Sdk",
+		DataSourceName:  "GoSDK",
+		DataSourceGroup: "Sdk",
 	}
 
 	insInput1 := model.InstanceInput{
@@ -308,10 +307,9 @@ func getInput() (model.ResourceInput, model.DatasourceInput, model.InstanceInput
 	}
 
 	dpInput1 := model.DataPointInput{
-		DataPointName:            "cpu",
-		DataPointType:            "COUNTER",
-		DataPointAggregationType: "SUM",
-		Value:                    map[string]string{fmt.Sprintf("%d", time.Now().Unix()): "124"},
+		DataPointName: "cpu",
+		DataPointType: "COUNTER",
+		Value:         map[string]string{fmt.Sprintf("%d", time.Now().Unix()): "124"},
 	}
 	return rInput1, dsInput1, insInput1, dpInput1
 }
@@ -376,7 +374,7 @@ func prepareMetricsRequestCache() {
 	}
 
 	dpInput1 := model.DataPointInput{
-		DataPointName:            "cpu",
+		DataPointName:            "memory",
 		DataPointType:            "COUNTER",
 		DataPointAggregationType: "SUM",
 		Value:                    map[string]string{fmt.Sprintf("%d", time.Now().Unix()): "124"},
@@ -387,7 +385,19 @@ func prepareMetricsRequestCache() {
 		Instance:   insInput1,
 		DataPoint:  dpInput1,
 	}
-	metricBatch = append(metricBatch, mInput, mInput1)
+	dpInput2 := model.DataPointInput{
+		DataPointName:            "cpu",
+		DataPointType:            "COUNTER",
+		DataPointAggregationType: "SUM",
+		Value:                    map[string]string{fmt.Sprintf("%d", time.Now().Unix()): "14"},
+	}
+	mInput2 := model.MetricsInput{
+		Resource:   rInput1,
+		Datasource: dsInput1,
+		Instance:   insInput1,
+		DataPoint:  dpInput2,
+	}
+	metricBatch = append(metricBatch, mInput, mInput1, mInput2)
 }
 
 func TestUpdateResourceProperties(t *testing.T) {

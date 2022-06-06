@@ -80,10 +80,6 @@ func (lmi *LMMetricIngest) SendMetrics(rInput model.ResourceInput, dsInput model
 		payloadList := internal.DataPayload{
 			MetricBodyList: singlePayloadBody,
 		}
-		// body, err := json.Marshal(payload)
-		// if err != nil {
-		// 	return nil, fmt.Errorf("error in marshaling single metric payload: %v", err)
-		// }
 		return lmi.ExportData(payloadList, uri, http.MethodPost)
 	}
 	return nil, nil
@@ -186,8 +182,6 @@ func (lmi *LMMetricIngest) CreateRequestBody() internal.DataPayload {
 		} else {
 			for _, ins := range instArray {
 				if ins.InstanceName == singleRequest.Instance.InstanceName {
-					fmt.Println("Instacne name request ::", singleRequest.Instance.InstanceName)
-					fmt.Println("Instacne name ::", ins.InstanceName)
 					instPresent = true
 				}
 			}
@@ -202,8 +196,6 @@ func (lmi *LMMetricIngest) CreateRequestBody() internal.DataPayload {
 		} else {
 			for _, dp := range dpArray {
 				if dp.DataPointName == singleRequest.DataPoint.DataPointName {
-					fmt.Println("Dp name request ::", singleRequest.DataPoint.DataPointName)
-					fmt.Println("dp name ::", dp.DataPointName)
 					dpPresent = true
 				}
 			}
@@ -213,9 +205,6 @@ func (lmi *LMMetricIngest) CreateRequestBody() internal.DataPayload {
 		}
 	}
 
-	fmt.Println("Datasource map::", dsMap)
-	fmt.Println("Instance map::", instanceMap)
-	fmt.Println("Datapoint map::", datapointMap)
 	// after merging create metric payload
 	body := lmi.createRestMetricsPayload()
 
@@ -230,7 +219,6 @@ func (lmi LMMetricIngest) URI() string {
 func (lmi *LMMetricIngest) createRestMetricsPayload() internal.DataPayload {
 	var payload model.MetricPayload
 	var payloadList []model.MetricPayload
-	var dataPoints []model.DataPoint
 	for resName, resDetails := range resourceMap {
 		payload.ResourceName = resDetails.ResourceName
 		payload.ResourceID = resDetails.ResourceID
@@ -245,6 +233,7 @@ func (lmi *LMMetricIngest) createRestMetricsPayload() internal.DataPayload {
 				payload.DataSourceGroup = ds.DataSourceGroup
 				instArray, _ := instanceMap[ds.DataSourceName]
 				for _, instance := range instArray {
+					var dataPoints []model.DataPoint
 					if dpArray, exists := datapointMap[instance.InstanceName]; exists {
 						for _, dp := range dpArray {
 							dataPoint := model.DataPoint{
@@ -261,12 +250,6 @@ func (lmi *LMMetricIngest) createRestMetricsPayload() internal.DataPayload {
 				}
 				payloadList = append(payloadList, payload)
 			}
-			// if dsExists {
-			// 	payload.DataSourceName = ds.DataSourceName
-			// 	payload.DataSourceID = ds.DataSourceID
-			// 	payload.DataSourceDisplayName = ds.DataSourceDisplayName
-			// 	payload.DataSourceGroup = ds.DataSourceGroup
-			// }
 		}
 	}
 
@@ -286,10 +269,8 @@ func (lmi *LMMetricIngest) ExportData(payloadList internal.DataPayload, uri, met
 		if err != nil {
 			return nil, fmt.Errorf("error in marshaling batched metric payload: %v", err)
 		}
-		fmt.Println("Metric Payload :::", string(body))
 		resp, err := internal.MakeRequest(lmi.client, lmi.url, body, uri, method)
 		if err != nil {
-			fmt.Println("Metric error :::", err)
 			return resp, err
 		}
 		return resp, err
@@ -322,10 +303,6 @@ func (lmi *LMMetricIngest) UpdateResourceProperties(resIDs, resProps map[string]
 	updateResPropBody := internal.DataPayload{
 		MetricBodyList: resPropList,
 	}
-	// body, err := json.Marshal(updateResProp)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("error in marshaling update resource properties: %v", err)
-	// }
 	resp, err := lmi.ExportData(updateResPropBody, updateResPropURI, method)
 	if err != nil {
 		return nil, fmt.Errorf("error in updating resource properties: %v", err)
@@ -365,10 +342,6 @@ func (lmi *LMMetricIngest) UpdateInstanceProperties(resIDs, insProps map[string]
 		DataSourceDisplayName: dsDisplayName,
 		Instances:             append([]model.Instance{}, model.Instance{InstanceName: insName, InstanceProperties: insProps}),
 	}
-	// body, err := json.Marshal(updateInsProp)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("error in marshaling update instance properties: %v", err)
-	// }
 	insPropList := append([]model.MetricPayload{}, updateInsProp)
 	updateInsPropBody := internal.DataPayload{
 		MetricBodyList: insPropList,
