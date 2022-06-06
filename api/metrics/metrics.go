@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	uri              = "/metric/ingest"
+	uri              = "/v2/metric/ingest"
 	updateResPropURI = "/resource_property/ingest"
 	updateInsPropURI = "/instance_property/ingest"
 	defaultAggType   = "none"
@@ -89,10 +89,11 @@ func setDefaultValues(dsInput model.DatasourceInput, instInput model.InstanceInp
 	if dsInput.DataSourceDisplayName == "" {
 		dsInput.DataSourceDisplayName = dsInput.DataSourceName
 	}
-	if instInput.InstanceName != "" {
-		instInput.InstanceName = strings.ReplaceAll(instInput.InstanceName, "/", "-")
-		if instInput.InstanceDisplayName == "" {
-			instInput.InstanceDisplayName = instInput.InstanceName
+
+	if instInput.InstanceDisplayName == "" {
+		if instInput.InstanceName != "" {
+			insName := strings.ReplaceAll(instInput.InstanceName, "/", "-")
+			instInput.InstanceDisplayName = insName
 		}
 	}
 
@@ -264,18 +265,15 @@ func (lmi *LMMetricIngest) createRestMetricsPayload() internal.DataPayload {
 }
 
 func (lmi *LMMetricIngest) ExportData(payloadList internal.DataPayload, uri, method string) (*utils.Response, error) {
-	for _, payload := range payloadList.MetricBodyList {
-		body, err := json.Marshal(payload)
-		if err != nil {
-			return nil, fmt.Errorf("error in marshaling batched metric payload: %v", err)
-		}
-		resp, err := internal.MakeRequest(lmi.client, lmi.url, body, uri, method)
-		if err != nil {
-			return resp, err
-		}
-		return resp, err
+	body, err := json.Marshal(payloadList.MetricBodyList)
+	if err != nil {
+		return nil, fmt.Errorf("error in marshaling metric payload: %v", err)
 	}
-	return nil, nil
+	resp, err := internal.MakeRequest(lmi.client, lmi.url, body, uri, method)
+	if err != nil {
+		return resp, fmt.Errorf("error while exporting metrics : %v", err)
+	}
+	return resp, err
 }
 
 func (lmi *LMMetricIngest) UpdateResourceProperties(resIDs, resProps map[string]string, patch bool) (*utils.Response, error) {

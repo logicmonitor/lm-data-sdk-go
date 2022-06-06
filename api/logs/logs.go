@@ -121,7 +121,7 @@ func (lli *LMLogIngest) ExportData(payloadList internal.DataPayload, uri, method
 	}
 	resp, err := internal.MakeRequest(lli.client, lli.url, body, uri, method)
 	if err != nil {
-		return resp, err
+		return resp, fmt.Errorf("error while exporting logs : %v", err)
 	}
 	return resp, err
 }

@@ -29,11 +29,11 @@ func ConvertHTTPToIngestResponse(resp *http.Response) (*Response, error) {
 	err = json.Unmarshal(body, ingestResponse)
 	if err != nil {
 		ingestResponse.Success = false
-		return ingestResponse, fmt.Errorf("Invalid Response! , Status Code: %d , Body: %s", resp.StatusCode, string(body[:]))
+		return ingestResponse, fmt.Errorf("Invalid Response! , Status Code: %d , Error Message: %s", resp.StatusCode, string(body[:]))
 	}
 	if !(resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusAccepted) {
 		ingestResponse.Success = false
-		return ingestResponse, fmt.Errorf("Error caught... , Status Code: %d , Body: %s", resp.StatusCode, ingestResponse.Message)
+		return ingestResponse, fmt.Errorf("Status Code: %d , Error Message: %s", resp.StatusCode, ingestResponse.Message)
 	}
 	ingestResponse.RequestID, _ = uuid.Parse(resp.Header.Get("x-request-id"))
 	return ingestResponse, nil
