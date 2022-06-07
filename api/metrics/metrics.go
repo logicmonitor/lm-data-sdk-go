@@ -39,22 +39,27 @@ type LMMetricIngest struct {
 	interval int
 }
 
-func NewLMMetricIngest(batch bool, interval int) *LMMetricIngest {
+func NewLMMetricIngest(batch bool, interval int) (*LMMetricIngest, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: false, MinVersion: tls.VersionTLS12}
 	clientTransport := (http.RoundTripper)(transport)
 	client := http.Client{Transport: clientTransport, Timeout: 5 * time.Second}
 
+	metricsURL, err := utils.URL()
+	if err != nil {
+		return nil, fmt.Errorf("Error in forming Metrics URL: %v", err)
+	}
+
 	lmi := LMMetricIngest{
 		client:   &client,
-		url:      utils.URL(),
+		url:      metricsURL,
 		batch:    batch,
 		interval: interval,
 	}
 	if batch {
 		go internal.CreateAndExportData(&lmi)
 	}
-	return &lmi
+	return &lmi, nil
 }
 
 // SendMetrics validates the attributes and exports the metrics to LM Platform

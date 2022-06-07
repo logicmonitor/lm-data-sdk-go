@@ -12,12 +12,12 @@ Similarly, If a log integration isn’t available or you have custom logs that y
 ### Set Configurations
 While using LMv1 authentication set LM_ACCESS_ID and LM_ACCESS_KEY properties.
 In Case of BearerToken Authentication set LM_BEARER_TOKEN property. 
-Company's name or Account name must be passed to LM_COMPANY property. 
+Company's name or Account name must be passed to LM_ACCOUNT property. 
 All properties can be set using environment variable.
 
 | Environment variable |	Description |
 | -------------------- |:--------------:|
-|   LM_COMPANY         |	Account name (Company Name) is your organization name |
+|   LM_ACCOUNT         |	Account name (Company Name) is your organization name |
 |   LM_ACCESS_ID       |	Access id while using LMv1 authentication.|
 |   LM_ACCESS_KEY      |	Access key while using LMv1 authentication.|
 |   LM_BEARER_TOKEN    |	BearerToken while using Bearer authentication.|

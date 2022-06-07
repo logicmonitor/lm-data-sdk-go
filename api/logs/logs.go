@@ -30,22 +30,26 @@ type LMLogIngest struct {
 	interval int
 }
 
-func NewLMLogIngest(batch bool, interval int) *LMLogIngest {
+func NewLMLogIngest(batch bool, interval int) (*LMLogIngest, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: false, MinVersion: tls.VersionTLS12}
 	clientTransport := (http.RoundTripper)(transport)
 	client := http.Client{Transport: clientTransport, Timeout: 5 * time.Second}
 
+	logsURL, err := utils.URL()
+	if err != nil {
+		return nil, fmt.Errorf("Error in forming Logs URL: %v", err)
+	}
 	lli := LMLogIngest{
 		client:   &client,
-		url:      utils.URL(),
+		url:      logsURL,
 		batch:    batch,
 		interval: interval,
 	}
 	if batch {
 		go internal.CreateAndExportData(&lli)
 	}
-	return &lli
+	return &lli, nil
 }
 
 func (lli *LMLogIngest) SendLogs(logMessage string, resourceidMap, metadata map[string]string) (*utils.Response, error) {

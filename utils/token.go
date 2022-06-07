@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"log"
 	"os"
 	"regexp"
 	"strconv"
@@ -97,17 +96,18 @@ func generateLMv1Token(method string, accessID string, accessKey string, body []
 	}
 }
 
-func URL() string {
-	company := os.Getenv("LM_COMPANY")
+func URL() (string, error) {
+	company := os.Getenv("LM_ACCOUNT")
 	if company == "" {
 		if company = os.Getenv("LOGICMONITOR_ACCOUNT"); company == "" {
-			log.Println("Environment variable `LM_COMPANY` must be provided")
-		}
-	} else {
-		match, _ := regexp.MatchString(REGEX_COMPANY_NAME, company)
-		if !match {
-			log.Println("Invalid Company Name")
+			return "", fmt.Errorf("Environment variable `LM_ACCOUNT` or `LOGICMONITOR_ACCOUNT` must be provided")
 		}
 	}
-	return fmt.Sprintf(ingestURL, company)
+	if company != "" {
+		match, _ := regexp.MatchString(REGEX_COMPANY_NAME, company)
+		if !match {
+			return "", fmt.Errorf("Invalid Company Name")
+		}
+	}
+	return fmt.Sprintf(ingestURL, company), nil
 }

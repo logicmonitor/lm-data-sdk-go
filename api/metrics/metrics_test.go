@@ -41,13 +41,15 @@ func TestNewLMMetricIngest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			lmi := NewLMMetricIngest(tt.args.batch, tt.args.interval)
-			if lmi == nil {
-				t.Errorf("NewLMMetricIngest() error = %s", "unable to initialize LMMetricIngest")
+			setEnv()
+			_, err := NewLMMetricIngest(tt.args.batch, tt.args.interval)
+			if err != nil {
+				t.Errorf("NewLMMetricIngest() error = %v", err)
 				return
 			}
 		})
 	}
+	cleanUp()
 }
 
 func TestSendMetrics(t *testing.T) {
@@ -411,6 +413,7 @@ func TestUpdateResourceProperties(t *testing.T) {
 	}))
 
 	type args struct {
+		resName string
 		rId     map[string]string
 		resProp map[string]string
 		patch   bool
@@ -437,6 +440,7 @@ func TestUpdateResourceProperties(t *testing.T) {
 			url:      ts.URL,
 		},
 		args: args{
+			resName: "TestResource",
 			rId:     map[string]string{"system.displayname": "test-demo_OTEL_71086"},
 			resProp: map[string]string{"new": "updatedprop"},
 			patch:   false,
@@ -452,7 +456,7 @@ func TestUpdateResourceProperties(t *testing.T) {
 			client:   test.fields.client,
 			url:      test.fields.url,
 		}
-		_, err := e.UpdateResourceProperties(test.args.rId, test.args.resProp, test.args.patch)
+		_, err := e.UpdateResourceProperties(test.args.resName, test.args.rId, test.args.resProp, test.args.patch)
 		if err != nil {
 			t.Errorf("UpdateResourceProperties() error = %v", err)
 			return
@@ -472,6 +476,7 @@ func TestUpdateResourcePropertiesValidation(t *testing.T) {
 	}))
 
 	type args struct {
+		resName string
 		rId     map[string]string
 		resProp map[string]string
 		patch   bool
@@ -498,6 +503,7 @@ func TestUpdateResourcePropertiesValidation(t *testing.T) {
 			url:      ts.URL,
 		},
 		args: args{
+			resName: "Test",
 			rId:     map[string]string{"system.displayname": "test-demo_OTEL_71086"},
 			resProp: map[string]string{"new": ""},
 			patch:   false,
@@ -513,7 +519,7 @@ func TestUpdateResourcePropertiesValidation(t *testing.T) {
 			client:   test.fields.client,
 			url:      test.fields.url,
 		}
-		_, err := e.UpdateResourceProperties(test.args.rId, test.args.resProp, test.args.patch)
+		_, err := e.UpdateResourceProperties(test.args.resName, test.args.rId, test.args.resProp, test.args.patch)
 		if err == nil {
 			t.Errorf("UpdateResourceProperties() expect error, but got error = nil")
 			return
@@ -534,6 +540,7 @@ func TestUpdateResourcePropertiesError(t *testing.T) {
 	}))
 
 	type args struct {
+		resName string
 		rId     map[string]string
 		resProp map[string]string
 		patch   bool
@@ -560,6 +567,7 @@ func TestUpdateResourcePropertiesError(t *testing.T) {
 			url:      ts.URL,
 		},
 		args: args{
+			resName: "Test",
 			rId:     map[string]string{"system.displayname": "test-demo_OTEL_71086"},
 			resProp: map[string]string{"new": "updatedprop"},
 			patch:   true,
@@ -575,7 +583,7 @@ func TestUpdateResourcePropertiesError(t *testing.T) {
 			client:   test.fields.client,
 			url:      test.fields.url,
 		}
-		_, err := e.UpdateResourceProperties(test.args.rId, test.args.resProp, test.args.patch)
+		_, err := e.UpdateResourceProperties(test.args.resName, test.args.rId, test.args.resProp, test.args.patch)
 		if err == nil {
 			t.Errorf("UpdateResourceProperties() should generate error but error is nil")
 			return
@@ -790,13 +798,13 @@ func TestUpdateInstancePropertiesError(t *testing.T) {
 }
 
 func setEnv() {
-	os.Setenv("LM_COMPANY", "testenv")
+	os.Setenv("LM_ACCOUNT", "testenv")
 	os.Setenv("LM_ACCESS_ID", "weryuifsjkf")
 	os.Setenv("LM_ACCESS_KEY", "@dfsd4FDf999999FDE")
 }
 
 func cleanUp() {
-	os.Unsetenv("LM_COMPANY")
+	os.Unsetenv("LM_ACCOUNT")
 	os.Unsetenv("LM_ACCESS_ID")
 	os.Unsetenv("LM_ACCESS_KEY")
 }

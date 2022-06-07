@@ -35,8 +35,10 @@ func main_metrics() {
 		Value:                    map[string]string{fmt.Sprintf("%d", time.Now().Unix()): "124"},
 	}
 
-	lmMetric := metrics.NewLMMetricIngest(false, 10)
-	//lmMetric.Start()
+	lmMetric, err := metrics.NewLMMetricIngest(false, 10)
+	if err != nil {
+		fmt.Println("Error in initializing metric ingest :", err)
+	}
 	lmMetric.SendMetrics(rInput, dsInput, insInput, dpInput)
 
 	time.Sleep(3 * time.Second)
