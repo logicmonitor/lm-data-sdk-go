@@ -11,9 +11,11 @@ func main_logs() {
 	logstr := "This is a test message"
 	logstr2 := "This is 2nd log"
 	logstr3 := "this is 3rd log"
+
 	lmLog, err := logs.NewLMLogIngest(true, 10)
 	if err != nil {
 		fmt.Println("Error in initilaizing log ingest ", err)
+		return
 	}
 
 	fmt.Println("Sending log1....")

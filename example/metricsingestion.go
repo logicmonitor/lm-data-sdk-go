@@ -10,11 +10,15 @@ import (
 
 func main_metrics() {
 
+	lmMetric, err := metrics.NewLMMetricIngest(false, 10)
+	if err != nil {
+		fmt.Println("Error in initializing metric ingest :", err)
+		return
+	}
 	// fill the values
 	rInput := model.ResourceInput{
 		ResourceName: "demo_OTEL_71086",
-		//ResourceDescription: "Testing",
-		ResourceID: map[string]string{"system.displayname": "demo_OTEL_71086"},
+		ResourceID:   map[string]string{"system.displayname": "demo_OTEL_71086"},
 	}
 
 	dsInput := model.DatasourceInput{
@@ -35,10 +39,6 @@ func main_metrics() {
 		Value:                    map[string]string{fmt.Sprintf("%d", time.Now().Unix()): "124"},
 	}
 
-	lmMetric, err := metrics.NewLMMetricIngest(false, 10)
-	if err != nil {
-		fmt.Println("Error in initializing metric ingest :", err)
-	}
 	lmMetric.SendMetrics(rInput, dsInput, insInput, dpInput)
 
 	time.Sleep(3 * time.Second)
@@ -46,8 +46,7 @@ func main_metrics() {
 	// fill the values
 	rInput1 := model.ResourceInput{
 		ResourceName: "demo_OTEL_71086",
-		//ResourceDescription: "Testing",
-		ResourceID: map[string]string{"system.displayname": "demo_OTEL_71086"},
+		ResourceID:   map[string]string{"system.displayname": "demo_OTEL_71086"},
 	}
 
 	dsInput1 := model.DatasourceInput{
@@ -67,7 +66,6 @@ func main_metrics() {
 		DataPointAggregationType: "SUM",
 		Value:                    map[string]string{fmt.Sprintf("%d", time.Now().Unix()): "124"},
 	}
-	fmt.Println("Sending new metrics....")
 
 	lmMetric.SendMetrics(rInput1, dsInput1, insInput1, dpInput1)
 
@@ -76,8 +74,7 @@ func main_metrics() {
 	// fill the values
 	rInput2 := model.ResourceInput{
 		ResourceName: "demo_OTEL_71086",
-		//ResourceDescription: "Testing",
-		ResourceID: map[string]string{"system.displayname": "demo_OTEL_71086"},
+		ResourceID:   map[string]string{"system.displayname": "demo_OTEL_71086"},
 	}
 
 	dsInput2 := model.DatasourceInput{
@@ -97,7 +94,6 @@ func main_metrics() {
 		DataPointAggregationType: "SUM",
 		Value:                    map[string]string{fmt.Sprintf("%d", time.Now().Unix()): "14"},
 	}
-	fmt.Println("Sending new metrics .......")
 
 	lmMetric.SendMetrics(rInput2, dsInput2, insInput2, dpInput2)
 }
