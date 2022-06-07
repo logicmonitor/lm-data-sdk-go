@@ -14,7 +14,7 @@ const (
 func validateResource(resInput model.ResourceInput) string {
 	errorMsg := ""
 	if resInput.ResourceName != "" {
-		errorMsg += checkResourceNameValidation(resInput.IsCreate, resInput.ResourceName)
+		errorMsg += CheckResourceNameValidation(resInput.IsCreate, resInput.ResourceName)
 	}
 	if resInput.ResourceDescription != "" {
 		errorMsg += checkResourceDescriptionValidation(resInput.ResourceName)
@@ -26,7 +26,7 @@ func validateResource(resInput model.ResourceInput) string {
 	return errorMsg
 }
 
-func checkResourceNameValidation(isCreate bool, resName string) string {
+func CheckResourceNameValidation(isCreate bool, resName string) string {
 	errorResMsg := ""
 	if isCreate && resName == "" {
 		errorResMsg = "Resource name is mandatory. "

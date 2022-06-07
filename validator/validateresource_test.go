@@ -72,7 +72,7 @@ func TestCheckResourceNameValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			msg := checkResourceNameValidation(tt.args.isCreate, tt.args.resourceName)
+			msg := CheckResourceNameValidation(tt.args.isCreate, tt.args.resourceName)
 			if msg != tt.errorMsg {
 				t.Errorf("checkResourceNameValidation() unknown error = %s", msg)
 				return

@@ -12,8 +12,9 @@ import (
 )
 
 type DataPayload struct {
-	MetricBodyList []model.MetricPayload
-	LogBodyList    []model.LogPayload
+	MetricBodyList       []model.MetricPayload
+	LogBodyList          []model.LogPayload
+	UpdatePropertiesBody model.UpdateProperties
 }
 
 type LMIngest interface {
