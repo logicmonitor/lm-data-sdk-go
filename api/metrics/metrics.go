@@ -40,7 +40,7 @@ type LMMetricIngest struct {
 	interval time.Duration
 }
 
-func NewLMMetricIngest(ctx context.Context, opts []Option) (*LMMetricIngest, error) {
+func NewLMMetricIngest(ctx context.Context, opts ...Option) (*LMMetricIngest, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: false, MinVersion: tls.VersionTLS12}
 	clientTransport := (http.RoundTripper)(transport)
