@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -36,10 +37,10 @@ type LMMetricIngest struct {
 	client   *http.Client
 	url      string
 	batch    bool
-	interval int
+	interval time.Duration
 }
 
-func NewLMMetricIngest(batch bool, interval int) (*LMMetricIngest, error) {
+func NewLMMetricIngest(ctx context.Context, opts []Option) (*LMMetricIngest, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: false, MinVersion: tls.VersionTLS12}
 	clientTransport := (http.RoundTripper)(transport)
@@ -51,19 +52,22 @@ func NewLMMetricIngest(batch bool, interval int) (*LMMetricIngest, error) {
 	}
 
 	lmi := LMMetricIngest{
-		client:   &client,
-		url:      metricsURL,
-		batch:    batch,
-		interval: interval,
+		client: &client,
+		url:    metricsURL,
 	}
-	if batch {
+	for _, opt := range opts {
+		if err := opt(&lmi); err != nil {
+			return nil, err
+		}
+	}
+	if lmi.batch {
 		go internal.CreateAndExportData(&lmi)
 	}
 	return &lmi, nil
 }
 
 // SendMetrics validates the attributes and exports the metrics to LM Platform
-func (lmi *LMMetricIngest) SendMetrics(rInput model.ResourceInput, dsInput model.DatasourceInput, instInput model.InstanceInput, dpInput model.DataPointInput) (*utils.Response, error) {
+func (lmi *LMMetricIngest) SendMetrics(ctx context.Context, rInput model.ResourceInput, dsInput model.DatasourceInput, instInput model.InstanceInput, dpInput model.DataPointInput) (*utils.Response, error) {
 	errorMsg := validator.ValidateAttributes(rInput, dsInput, instInput, dpInput)
 	if errorMsg != "" {
 		return nil, fmt.Errorf("Validation failed : %s", errorMsg)
@@ -139,7 +143,7 @@ func createSingleRequestBody(input model.MetricsInput) model.MetricPayload {
 	return body
 }
 
-func (lmi LMMetricIngest) BatchInterval() int {
+func (lmi LMMetricIngest) BatchInterval() time.Duration {
 	return lmi.interval
 }
 
@@ -271,27 +275,30 @@ func (lmi *LMMetricIngest) createRestMetricsPayload() internal.DataPayload {
 }
 
 func (lmi *LMMetricIngest) ExportData(payloadList internal.DataPayload, uri, method string) (*utils.Response, error) {
-	var payloadBody []byte
-	var err error
 	if method == http.MethodPatch || method == http.MethodPut {
-		payloadBody, err = json.Marshal(payloadList.UpdatePropertiesBody)
+		payloadBody, err := json.Marshal(payloadList.UpdatePropertiesBody)
 		if err != nil {
 			return nil, fmt.Errorf("error in marshaling update property payload: %v", err)
 		}
+		resp, err := internal.MakeRequest(lmi.client, lmi.url, payloadBody, uri, method)
+		if err != nil {
+			return resp, fmt.Errorf("error while exporting metrics : %v", err)
+		}
+		return resp, err
 	} else {
 		if len(payloadList.MetricBodyList) > 0 {
-			payloadBody, err = json.Marshal(payloadList.MetricBodyList)
+			payloadBody, err := json.Marshal(payloadList.MetricBodyList)
 			if err != nil {
 				return nil, fmt.Errorf("error in marshaling metric payload: %v", err)
 			}
+			resp, err := internal.MakeRequest(lmi.client, lmi.url, payloadBody, uri, method)
+			if err != nil {
+				return resp, fmt.Errorf("error while exporting metrics : %v", err)
+			}
+			return resp, err
 		}
 	}
-
-	resp, err := internal.MakeRequest(lmi.client, lmi.url, payloadBody, uri, method)
-	if err != nil {
-		return resp, fmt.Errorf("error while exporting metrics : %v", err)
-	}
-	return resp, err
+	return nil, nil
 }
 
 func (lmi *LMMetricIngest) UpdateResourceProperties(resName string, resIDs, resProps map[string]string, patch bool) (*utils.Response, error) {
