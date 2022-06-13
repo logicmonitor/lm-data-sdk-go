@@ -18,14 +18,14 @@ type DataPayload struct {
 }
 
 type LMIngest interface {
-	BatchInterval() int
+	BatchInterval() time.Duration
 	URI() string
 	CreateRequestBody() DataPayload
 	ExportData(body DataPayload, uri, method string) (*utils.Response, error)
 }
 
 func CreateAndExportData(li LMIngest) {
-	ticker := time.NewTicker(time.Duration(li.BatchInterval()) * time.Second)
+	ticker := time.NewTicker(li.BatchInterval())
 	for range ticker.C {
 		body := li.CreateRequestBody()
 		_, err := li.ExportData(body, li.URI(), http.MethodPost)

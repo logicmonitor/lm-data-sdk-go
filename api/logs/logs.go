@@ -1,6 +1,7 @@
 package logs
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -27,10 +28,10 @@ type LMLogIngest struct {
 	client   *http.Client
 	url      string
 	batch    bool
-	interval int
+	interval time.Duration
 }
 
-func NewLMLogIngest(batch bool, interval int) (*LMLogIngest, error) {
+func NewLMLogIngest(ctx context.Context, opts ...Option) (*LMLogIngest, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: false, MinVersion: tls.VersionTLS12}
 	clientTransport := (http.RoundTripper)(transport)
@@ -41,18 +42,21 @@ func NewLMLogIngest(batch bool, interval int) (*LMLogIngest, error) {
 		return nil, fmt.Errorf("Error in forming Logs URL: %v", err)
 	}
 	lli := LMLogIngest{
-		client:   &client,
-		url:      logsURL,
-		batch:    batch,
-		interval: interval,
+		client: &client,
+		url:    logsURL,
 	}
-	if batch {
+	for _, opt := range opts {
+		if err := opt(&lli); err != nil {
+			return nil, err
+		}
+	}
+	if lli.batch {
 		go internal.CreateAndExportData(&lli)
 	}
 	return &lli, nil
 }
 
-func (lli *LMLogIngest) SendLogs(logMessage string, resourceidMap, metadata map[string]string) (*utils.Response, error) {
+func (lli *LMLogIngest) SendLogs(ctx context.Context, logMessage string, resourceidMap, metadata map[string]string) (*utils.Response, error) {
 	timestamp := strconv.Itoa(int(time.Now().Unix()))
 	logsV1 := model.LogInput{
 		Message:    logMessage,
@@ -84,7 +88,7 @@ func addRequest(logInput model.LogInput) {
 	logBatch = append(logBatch, logInput)
 }
 
-func (lli *LMLogIngest) BatchInterval() int {
+func (lli *LMLogIngest) BatchInterval() time.Duration {
 	return lli.interval
 }
 
@@ -119,13 +123,16 @@ func (lli *LMLogIngest) CreateRequestBody() internal.DataPayload {
 }
 
 func (lli *LMLogIngest) ExportData(payloadList internal.DataPayload, uri, method string) (*utils.Response, error) {
-	body, err := json.Marshal(payloadList.LogBodyList)
-	if err != nil {
-		return nil, fmt.Errorf("error in marshaling log payload: %v", err)
+	if len(payloadList.LogBodyList) > 0 {
+		body, err := json.Marshal(payloadList.LogBodyList)
+		if err != nil {
+			return nil, fmt.Errorf("error in marshaling log payload: %v", err)
+		}
+		resp, err := internal.MakeRequest(lli.client, lli.url, body, uri, method)
+		if err != nil {
+			return resp, fmt.Errorf("error while exporting logs : %v", err)
+		}
+		return resp, err
 	}
-	resp, err := internal.MakeRequest(lli.client, lli.url, body, uri, method)
-	if err != nil {
-		return resp, fmt.Errorf("error while exporting logs : %v", err)
-	}
-	return resp, err
+	return nil, nil
 }
