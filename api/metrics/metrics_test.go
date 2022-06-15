@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -15,8 +16,7 @@ import (
 
 func TestNewLMMetricIngest(t *testing.T) {
 	type args struct {
-		batch    bool
-		interval int
+		option []Option
 	}
 
 	tests := []struct {
@@ -26,15 +26,15 @@ func TestNewLMMetricIngest(t *testing.T) {
 		{
 			name: "New LM Metric Ingest with Batching enabled",
 			args: args{
-				batch:    true,
-				interval: 10,
+				option: []Option{
+					WithMetricBatchingEnabled(5 * time.Second),
+				},
 			},
 		},
 		{
 			name: "New LM Metric Ingest without Batching enabled",
 			args: args{
-				batch:    false,
-				interval: 10,
+				option: []Option{},
 			},
 		},
 	}
@@ -42,7 +42,7 @@ func TestNewLMMetricIngest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			setEnv()
-			_, err := NewLMMetricIngest(tt.args.batch, tt.args.interval)
+			_, err := NewLMMetricIngest(context.Background(), tt.args.option...)
 			if err != nil {
 				t.Errorf("NewLMMetricIngest() error = %v", err)
 				return
@@ -70,11 +70,9 @@ func TestSendMetrics(t *testing.T) {
 	}
 
 	type fields struct {
-		// Input configuration.
-		batch    bool
-		interval int
-		client   *http.Client
-		url      string
+		client *http.Client
+		url    string
+		auth   model.AuthProvider
 	}
 
 	rInput1, dsInput1, insInput1, dpInput1 := getInput()
@@ -86,10 +84,9 @@ func TestSendMetrics(t *testing.T) {
 	}{
 		name: "Test metric export without batching",
 		fields: fields{
-			batch:    false,
-			interval: 10,
-			client:   ts.Client(),
-			url:      ts.URL,
+			client: ts.Client(),
+			url:    ts.URL,
+			auth:   model.DefaultAuthenticator{},
 		},
 		args: args{
 			rInput:    rInput1,
@@ -103,12 +100,11 @@ func TestSendMetrics(t *testing.T) {
 
 		setEnv()
 		e := &LMMetricIngest{
-			batch:    test.fields.batch,
-			interval: test.fields.interval,
-			client:   test.fields.client,
-			url:      test.fields.url,
+			client: test.fields.client,
+			url:    test.fields.url,
+			auth:   test.fields.auth,
 		}
-		_, err := e.SendMetrics(test.args.rInput, test.args.dsInput, test.args.instInput, test.args.dpInput)
+		_, err := e.SendMetrics(context.Background(), test.args.rInput, test.args.dsInput, test.args.instInput, test.args.dpInput)
 		if err != nil {
 			t.Errorf("SendMetrics() error = %v", err)
 			return
@@ -136,11 +132,9 @@ func TestSendMetricsError(t *testing.T) {
 	}
 
 	type fields struct {
-		// Input configuration.
-		batch    bool
-		interval int
-		client   *http.Client
-		url      string
+		client *http.Client
+		url    string
+		auth   model.AuthProvider
 	}
 
 	rInput1, dsInput1, insInput1, dpInput1 := getInput()
@@ -152,10 +146,9 @@ func TestSendMetricsError(t *testing.T) {
 	}{
 		name: "Test metric export error scenario",
 		fields: fields{
-			batch:    false,
-			interval: 10,
-			client:   ts.Client(),
-			url:      ts.URL,
+			client: ts.Client(),
+			url:    ts.URL,
+			auth:   model.DefaultAuthenticator{},
 		},
 		args: args{
 			rInput:    rInput1,
@@ -169,12 +162,11 @@ func TestSendMetricsError(t *testing.T) {
 
 		setEnv()
 		e := &LMMetricIngest{
-			batch:    test.fields.batch,
-			interval: test.fields.interval,
-			client:   test.fields.client,
-			url:      test.fields.url,
+			client: test.fields.client,
+			url:    test.fields.url,
+			auth:   test.fields.auth,
 		}
-		_, err := e.SendMetrics(test.args.rInput, test.args.dsInput, test.args.instInput, test.args.dpInput)
+		_, err := e.SendMetrics(context.Background(), test.args.rInput, test.args.dsInput, test.args.instInput, test.args.dpInput)
 		if err == nil {
 			t.Errorf("SendMetrics() expect error but got error = %v", err)
 			return
@@ -201,11 +193,9 @@ func TestSendMetricsBatch(t *testing.T) {
 	}
 
 	type fields struct {
-		// Input configuration.
-		batch    bool
-		interval int
-		client   *http.Client
-		url      string
+		client *http.Client
+		url    string
+		auth   model.AuthProvider
 	}
 
 	rInput1, dsInput1, insInput1, dpInput1 := getInput()
@@ -217,10 +207,9 @@ func TestSendMetricsBatch(t *testing.T) {
 	}{
 		name: "Test metric export without batching",
 		fields: fields{
-			batch:    true,
-			interval: 10,
-			client:   ts.Client(),
-			url:      ts.URL,
+			client: ts.Client(),
+			url:    ts.URL,
+			auth:   model.DefaultAuthenticator{},
 		},
 		args: args{
 			rInput:    rInput1,
@@ -234,12 +223,11 @@ func TestSendMetricsBatch(t *testing.T) {
 
 		setEnv()
 		e := &LMMetricIngest{
-			batch:    test.fields.batch,
-			interval: test.fields.interval,
-			client:   test.fields.client,
-			url:      test.fields.url,
+			client: test.fields.client,
+			url:    test.fields.url,
+			auth:   test.fields.auth,
 		}
-		_, err := e.SendMetrics(test.args.rInput, test.args.dsInput, test.args.instInput, test.args.dpInput)
+		_, err := e.SendMetrics(context.Background(), test.args.rInput, test.args.dsInput, test.args.instInput, test.args.dpInput)
 		if err != nil {
 			t.Errorf("SendMetrics() error = %v", err)
 			return
@@ -271,10 +259,9 @@ func TestMergeRequest(t *testing.T) {
 		w.Write(body)
 	}))
 	e := &LMMetricIngest{
-		batch:    true,
-		interval: 10,
-		client:   ts.Client(),
-		url:      ts.URL,
+		client: ts.Client(),
+		url:    ts.URL,
+		auth:   model.DefaultAuthenticator{},
 	}
 
 	prepareMetricsRequestCache()
@@ -420,11 +407,9 @@ func TestUpdateResourceProperties(t *testing.T) {
 	}
 
 	type fields struct {
-		// Input configuration.
-		batch    bool
-		interval int
-		client   *http.Client
-		url      string
+		client *http.Client
+		url    string
+		auth   model.AuthProvider
 	}
 
 	test := struct {
@@ -434,10 +419,9 @@ func TestUpdateResourceProperties(t *testing.T) {
 	}{
 		name: "Update resource properties",
 		fields: fields{
-			batch:    false,
-			interval: 10,
-			client:   ts.Client(),
-			url:      ts.URL,
+			client: ts.Client(),
+			url:    ts.URL,
+			auth:   model.DefaultAuthenticator{},
 		},
 		args: args{
 			resName: "TestResource",
@@ -451,10 +435,9 @@ func TestUpdateResourceProperties(t *testing.T) {
 
 		setEnv()
 		e := &LMMetricIngest{
-			batch:    test.fields.batch,
-			interval: test.fields.interval,
-			client:   test.fields.client,
-			url:      test.fields.url,
+			client: test.fields.client,
+			url:    test.fields.url,
+			auth:   test.fields.auth,
 		}
 		_, err := e.UpdateResourceProperties(test.args.resName, test.args.rId, test.args.resProp, test.args.patch)
 		if err != nil {
@@ -483,11 +466,9 @@ func TestUpdateResourcePropertiesValidation(t *testing.T) {
 	}
 
 	type fields struct {
-		// Input configuration.
-		batch    bool
-		interval int
-		client   *http.Client
-		url      string
+		client *http.Client
+		url    string
+		auth   model.AuthProvider
 	}
 
 	test := struct {
@@ -497,10 +478,9 @@ func TestUpdateResourcePropertiesValidation(t *testing.T) {
 	}{
 		name: "Update resource properties validation check",
 		fields: fields{
-			batch:    false,
-			interval: 10,
-			client:   ts.Client(),
-			url:      ts.URL,
+			client: ts.Client(),
+			url:    ts.URL,
+			auth:   model.DefaultAuthenticator{},
 		},
 		args: args{
 			resName: "Test",
@@ -514,10 +494,9 @@ func TestUpdateResourcePropertiesValidation(t *testing.T) {
 
 		setEnv()
 		e := &LMMetricIngest{
-			batch:    test.fields.batch,
-			interval: test.fields.interval,
-			client:   test.fields.client,
-			url:      test.fields.url,
+			client: test.fields.client,
+			url:    test.fields.url,
+			auth:   test.fields.auth,
 		}
 		_, err := e.UpdateResourceProperties(test.args.resName, test.args.rId, test.args.resProp, test.args.patch)
 		if err == nil {
@@ -547,11 +526,9 @@ func TestUpdateResourcePropertiesError(t *testing.T) {
 	}
 
 	type fields struct {
-		// Input configuration.
-		batch    bool
-		interval int
-		client   *http.Client
-		url      string
+		client *http.Client
+		url    string
+		auth   model.DefaultAuthenticator
 	}
 
 	test := struct {
@@ -561,10 +538,9 @@ func TestUpdateResourcePropertiesError(t *testing.T) {
 	}{
 		name: "Update resource properties",
 		fields: fields{
-			batch:    false,
-			interval: 10,
-			client:   ts.Client(),
-			url:      ts.URL,
+			client: ts.Client(),
+			url:    ts.URL,
+			auth:   model.DefaultAuthenticator{},
 		},
 		args: args{
 			resName: "Test",
@@ -578,10 +554,9 @@ func TestUpdateResourcePropertiesError(t *testing.T) {
 
 		setEnv()
 		e := &LMMetricIngest{
-			batch:    test.fields.batch,
-			interval: test.fields.interval,
-			client:   test.fields.client,
-			url:      test.fields.url,
+			client: test.fields.client,
+			url:    test.fields.url,
+			auth:   test.fields.auth,
 		}
 		_, err := e.UpdateResourceProperties(test.args.resName, test.args.rId, test.args.resProp, test.args.patch)
 		if err == nil {
@@ -612,11 +587,9 @@ func TestUpdateInstanceProperties(t *testing.T) {
 	}
 
 	type fields struct {
-		// Input configuration.
-		batch    bool
-		interval int
-		client   *http.Client
-		url      string
+		client *http.Client
+		url    string
+		auth   model.AuthProvider
 	}
 
 	test := struct {
@@ -626,10 +599,9 @@ func TestUpdateInstanceProperties(t *testing.T) {
 	}{
 		name: "Update instance properties",
 		fields: fields{
-			batch:    false,
-			interval: 10,
-			client:   ts.Client(),
-			url:      ts.URL,
+			client: ts.Client(),
+			url:    ts.URL,
+			auth:   model.DefaultAuthenticator{},
 		},
 		args: args{
 			rId:           map[string]string{"system.displayname": "test-demo_OTEL_71086"},
@@ -645,10 +617,9 @@ func TestUpdateInstanceProperties(t *testing.T) {
 
 		setEnv()
 		e := &LMMetricIngest{
-			batch:    test.fields.batch,
-			interval: test.fields.interval,
-			client:   test.fields.client,
-			url:      test.fields.url,
+			client: test.fields.client,
+			url:    test.fields.url,
+			auth:   test.fields.auth,
 		}
 		_, err := e.UpdateInstanceProperties(test.args.rId, test.args.insProp, test.args.dsName, test.args.dsDisplayName, test.args.insName, test.args.patch)
 		if err != nil {
@@ -680,11 +651,9 @@ func TestUpdateInstancePropertiesValidation(t *testing.T) {
 	}
 
 	type fields struct {
-		// Input configuration.
-		batch    bool
-		interval int
-		client   *http.Client
-		url      string
+		client *http.Client
+		url    string
+		auth   model.AuthProvider
 	}
 
 	test := struct {
@@ -694,10 +663,9 @@ func TestUpdateInstancePropertiesValidation(t *testing.T) {
 	}{
 		name: "Update instance properties validation check",
 		fields: fields{
-			batch:    false,
-			interval: 10,
-			client:   ts.Client(),
-			url:      ts.URL,
+			client: ts.Client(),
+			url:    ts.URL,
+			auth:   model.DefaultAuthenticator{},
 		},
 		args: args{
 			rId:           map[string]string{"system.displayname": "test-demo_OTEL_71086"},
@@ -713,10 +681,9 @@ func TestUpdateInstancePropertiesValidation(t *testing.T) {
 
 		setEnv()
 		e := &LMMetricIngest{
-			batch:    test.fields.batch,
-			interval: test.fields.interval,
-			client:   test.fields.client,
-			url:      test.fields.url,
+			client: test.fields.client,
+			url:    test.fields.url,
+			auth:   test.fields.auth,
 		}
 		_, err := e.UpdateInstanceProperties(test.args.rId, test.args.insProp, test.args.dsName, test.args.dsDisplayName, test.args.insName, test.args.patch)
 		if err == nil {
@@ -749,11 +716,9 @@ func TestUpdateInstancePropertiesError(t *testing.T) {
 	}
 
 	type fields struct {
-		// Input configuration.
-		batch    bool
-		interval int
-		client   *http.Client
-		url      string
+		client *http.Client
+		url    string
+		auth   model.AuthProvider
 	}
 
 	test := struct {
@@ -763,10 +728,9 @@ func TestUpdateInstancePropertiesError(t *testing.T) {
 	}{
 		name: "Update instance properties",
 		fields: fields{
-			batch:    false,
-			interval: 10,
-			client:   ts.Client(),
-			url:      ts.URL,
+			client: ts.Client(),
+			url:    ts.URL,
+			auth:   model.DefaultAuthenticator{},
 		},
 		args: args{
 			rId:           map[string]string{"system.displayname": "test-demo_OTEL_71086"},
@@ -782,10 +746,9 @@ func TestUpdateInstancePropertiesError(t *testing.T) {
 
 		setEnv()
 		e := &LMMetricIngest{
-			batch:    test.fields.batch,
-			interval: test.fields.interval,
-			client:   test.fields.client,
-			url:      test.fields.url,
+			client: test.fields.client,
+			url:    test.fields.url,
+			auth:   test.fields.auth,
 		}
 		_, err := e.UpdateInstanceProperties(test.args.rId, test.args.insProp, test.args.dsName, test.args.dsDisplayName, test.args.insName, test.args.patch)
 		if err == nil {

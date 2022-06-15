@@ -23,7 +23,7 @@ type Lmv1Token struct {
 	Epoch     time.Time
 }
 
-func GetToken(method string, body []byte, resourcePath string) (string, error) {
+func GetToken(method, resourcePath string, body []byte) string {
 	accessID := os.Getenv("LM_ACCESS_ID")
 	if accessID == "" {
 		accessID = os.Getenv("LOGICMONITOR_ACCESS_ID")
@@ -41,10 +41,15 @@ func GetToken(method string, body []byte, resourcePath string) (string, error) {
 		token = generateLMv1Token(method, accessID, accessKey, body, resourcePath).String()
 	} else if bearerToken != "" {
 		token = "Bearer " + bearerToken
-	} else {
-		return "", fmt.Errorf("Authenticate must provide environment variable `LM_ACCESS_ID` and `LM_ACCESS_KEY` OR `LM_BEARER_TOKEN`")
 	}
-	return token, nil
+	// } else {
+	// 	if collToken != "" {
+	// 		token = collToken
+	// 	} else {
+	// 		return "", fmt.Errorf("Authenticate must provide environment variable `LM_ACCESS_ID` and `LM_ACCESS_KEY` OR `LM_BEARER_TOKEN`")
+	// 	}
+	// }
+	return token
 }
 
 func (t *Lmv1Token) String() string {

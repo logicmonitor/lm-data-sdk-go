@@ -38,6 +38,7 @@ type LMMetricIngest struct {
 	url      string
 	batch    bool
 	interval time.Duration
+	auth     model.AuthProvider
 }
 
 func NewLMMetricIngest(ctx context.Context, opts ...Option) (*LMMetricIngest, error) {
@@ -54,6 +55,7 @@ func NewLMMetricIngest(ctx context.Context, opts ...Option) (*LMMetricIngest, er
 	lmi := LMMetricIngest{
 		client: &client,
 		url:    metricsURL,
+		auth:   model.DefaultAuthenticator{},
 	}
 	for _, opt := range opts {
 		if err := opt(&lmi); err != nil {
@@ -275,30 +277,27 @@ func (lmi *LMMetricIngest) createRestMetricsPayload() internal.DataPayload {
 }
 
 func (lmi *LMMetricIngest) ExportData(payloadList internal.DataPayload, uri, method string) (*utils.Response, error) {
+	var payloadBody []byte
+	var err error
 	if method == http.MethodPatch || method == http.MethodPut {
-		payloadBody, err := json.Marshal(payloadList.UpdatePropertiesBody)
+		payloadBody, err = json.Marshal(payloadList.UpdatePropertiesBody)
 		if err != nil {
 			return nil, fmt.Errorf("error in marshaling update property payload: %v", err)
 		}
-		resp, err := internal.MakeRequest(lmi.client, lmi.url, payloadBody, uri, method)
-		if err != nil {
-			return resp, fmt.Errorf("error while exporting metrics : %v", err)
-		}
-		return resp, err
 	} else {
 		if len(payloadList.MetricBodyList) > 0 {
-			payloadBody, err := json.Marshal(payloadList.MetricBodyList)
+			payloadBody, err = json.Marshal(payloadList.MetricBodyList)
 			if err != nil {
 				return nil, fmt.Errorf("error in marshaling metric payload: %v", err)
 			}
-			resp, err := internal.MakeRequest(lmi.client, lmi.url, payloadBody, uri, method)
-			if err != nil {
-				return resp, fmt.Errorf("error while exporting metrics : %v", err)
-			}
-			return resp, err
 		}
 	}
-	return nil, nil
+	token := lmi.auth.GetCredentials(method, uri, payloadBody)
+	resp, err := internal.MakeRequest(lmi.client, lmi.url, payloadBody, uri, method, token)
+	if err != nil {
+		return resp, fmt.Errorf("error while exporting metrics : %v", err)
+	}
+	return resp, err
 }
 
 func (lmi *LMMetricIngest) UpdateResourceProperties(resName string, resIDs, resProps map[string]string, patch bool) (*utils.Response, error) {
