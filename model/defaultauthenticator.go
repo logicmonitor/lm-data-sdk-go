@@ -2,6 +2,7 @@ package model
 
 import "github.com/logicmonitor/lm-data-sdk-go/utils"
 
+// DefaultAuthenticator implements AuthProvider interface
 type DefaultAuthenticator struct {
 }
 

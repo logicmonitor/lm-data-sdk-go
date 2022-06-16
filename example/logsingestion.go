@@ -25,15 +25,15 @@ func main_logs() {
 	}
 
 	fmt.Println("Sending log1....")
-	lmLog.SendLogs(context.Background(), logstr, map[string]string{"system.displayname": "TestLogexporterSDK_OTEL_30033"}, map[string]string{"testkey": "testvalue"})
+	lmLog.SendLogs(context.Background(), logstr, map[string]string{"system.displayname": "example-cart-service"}, map[string]string{"testkey": "testvalue"})
 
 	time.Sleep(2 * time.Second)
 	fmt.Println("Sending log2....")
-	lmLog.SendLogs(context.Background(), logstr2, map[string]string{"system.displayname": "TestLogexporterSDK_OTEL_30033"}, map[string]string{"testkey": "testvalue"})
+	lmLog.SendLogs(context.Background(), logstr2, map[string]string{"system.displayname": "example-cart-service"}, map[string]string{"testkey": "testvalue"})
 
 	time.Sleep(3 * time.Second)
 	fmt.Println("Sending log3....")
-	lmLog.SendLogs(context.Background(), logstr3, map[string]string{"system.displayname": "TestLogexporterSDK_OTEL_30033"}, map[string]string{"testkey": "testvalue"})
+	lmLog.SendLogs(context.Background(), logstr3, map[string]string{"system.displayname": "example-cart-service"}, map[string]string{"testkey": "testvalue"})
 
 	time.Sleep(10 * time.Second)
 }

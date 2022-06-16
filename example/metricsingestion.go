@@ -41,11 +41,11 @@ func main_metrics() {
 		fmt.Println("Error in sending 3rd metric: ", err)
 	}
 
-	resName := "TestLogexporterSDK_OTEL_30033"
-	resProp := map[string]string{"new": "updatedprop"}
-	rId := map[string]string{"system.displayname": "TestLogexporterSDK_OTEL_30033"}
-	insProp := map[string]string{"new": "updatedprop"}
-	dsName := "TestDS"
+	resName := "example-cart-service"
+	resProp := map[string]string{"propkey": "updatedprop"}
+	rId := map[string]string{"system.displayname": "example-cart-service"}
+	insProp := map[string]string{"propkey": "updatedprop"}
+	dsName := "TestDataSource"
 	dsDisplayName := "TestDisplayName"
 	insName := "DataSDK"
 	patch := true
@@ -65,7 +65,7 @@ func createInput1() (model.ResourceInput, model.DatasourceInput, model.InstanceI
 	// fill the values
 	rInput := model.ResourceInput{
 		ResourceName: "demo_OTEL_71086",
-		ResourceID:   map[string]string{"system.displayname": "TestLogexporterSDK_OTEL_30033"},
+		ResourceID:   map[string]string{"system.displayname": "example-cart-service"},
 	}
 
 	dsInput := model.DatasourceInput{
@@ -92,7 +92,7 @@ func createInput2() (model.ResourceInput, model.DatasourceInput, model.InstanceI
 	// fill the values
 	rInput := model.ResourceInput{
 		ResourceName: "demo_OTEL_71086",
-		ResourceID:   map[string]string{"system.displayname": "TestLogexporterSDK_OTEL_30033"},
+		ResourceID:   map[string]string{"system.displayname": "example-cart-service"},
 	}
 
 	dsInput := model.DatasourceInput{
@@ -119,7 +119,7 @@ func createInput3() (model.ResourceInput, model.DatasourceInput, model.InstanceI
 	// fill the values
 	rInput := model.ResourceInput{
 		ResourceName: "demo_OTEL_71086",
-		ResourceID:   map[string]string{"system.displayname": "TestLogexporterSDK_OTEL_30033"},
+		ResourceID:   map[string]string{"system.displayname": "example-cart-service"},
 	}
 
 	dsInput := model.DatasourceInput{

@@ -41,6 +41,7 @@ type LMMetricIngest struct {
 	auth     model.AuthProvider
 }
 
+// NewLMMetricIngest initializes LMMetricIngest
 func NewLMMetricIngest(ctx context.Context, opts ...Option) (*LMMetricIngest, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: false, MinVersion: tls.VersionTLS12}
@@ -68,7 +69,7 @@ func NewLMMetricIngest(ctx context.Context, opts ...Option) (*LMMetricIngest, er
 	return &lmi, nil
 }
 
-// SendMetrics validates the attributes and exports the metrics to LM Platform
+// SendMetrics is the entry point for receiving metric data. It also validates the attributes of metrics before creating metric payload.
 func (lmi *LMMetricIngest) SendMetrics(ctx context.Context, rInput model.ResourceInput, dsInput model.DatasourceInput, instInput model.InstanceInput, dpInput model.DataPointInput) (*utils.Response, error) {
 	errorMsg := validator.ValidateAttributes(rInput, dsInput, instInput, dpInput)
 	if errorMsg != "" {
@@ -96,6 +97,7 @@ func (lmi *LMMetricIngest) SendMetrics(ctx context.Context, rInput model.Resourc
 	return nil, nil
 }
 
+// setDefaultValues sets default values to missing or empty attribute fields
 func setDefaultValues(dsInput model.DatasourceInput, instInput model.InstanceInput, dpInput model.DataPointInput) (model.DatasourceInput, model.InstanceInput, model.DataPointInput) {
 	if dsInput.DataSourceDisplayName == "" {
 		dsInput.DataSourceDisplayName = dsInput.DataSourceName
@@ -120,6 +122,7 @@ func setDefaultValues(dsInput model.DatasourceInput, instInput model.InstanceInp
 	return dsInput, instInput, dpInput
 }
 
+// createSingleRequestBody prepares metric payload for single request when batching is disabled
 func createSingleRequestBody(input model.MetricsInput) model.MetricPayload {
 	dp := model.DataPoint(input.DataPoint)
 	instance := model.Instance{
@@ -145,6 +148,7 @@ func createSingleRequestBody(input model.MetricsInput) model.MetricPayload {
 	return body
 }
 
+// BatchInterval returns the time interval for batching
 func (lmi LMMetricIngest) BatchInterval() time.Duration {
 	return lmi.interval
 }
@@ -156,7 +160,7 @@ func addRequest(input model.MetricsInput) {
 	metricBatch = append(metricBatch, input)
 }
 
-// mergeRequest merges the requests present in batching cache at the end of every batching interval
+// CreateRequestBody merges the requests present in batching cache and creates metric payload at the end of every batching interval
 func (lmi *LMMetricIngest) CreateRequestBody() internal.DataPayload {
 	// merge the requests from map
 	resourceMap = make(map[string]model.ResourceInput)
@@ -223,11 +227,12 @@ func (lmi *LMMetricIngest) CreateRequestBody() internal.DataPayload {
 	return body
 }
 
+// URI returns the endpoint/uri of metric ingest API
 func (lmi LMMetricIngest) URI() string {
 	return uri
 }
 
-// createRestMetricsPayload creates metrics request payload
+// createRestMetricsPayload prepares metrics payload
 func (lmi *LMMetricIngest) createRestMetricsPayload() internal.DataPayload {
 	var payload model.MetricPayload
 	var payloadList []model.MetricPayload
@@ -276,6 +281,7 @@ func (lmi *LMMetricIngest) createRestMetricsPayload() internal.DataPayload {
 	return metricPayload
 }
 
+// ExportData exports metrics to the LM platform
 func (lmi *LMMetricIngest) ExportData(payloadList internal.DataPayload, uri, method string) (*utils.Response, error) {
 	var payloadBody []byte
 	var err error
@@ -292,12 +298,15 @@ func (lmi *LMMetricIngest) ExportData(payloadList internal.DataPayload, uri, met
 			}
 		}
 	}
-	token := lmi.auth.GetCredentials(method, uri, payloadBody)
-	resp, err := internal.MakeRequest(lmi.client, lmi.url, payloadBody, uri, method, token)
-	if err != nil {
-		return resp, fmt.Errorf("error while exporting metrics : %v", err)
+	if payloadBody != nil {
+		token := lmi.auth.GetCredentials(method, uri, payloadBody)
+		resp, err := internal.MakeRequest(lmi.client, lmi.url, payloadBody, uri, method, token)
+		if err != nil {
+			return resp, fmt.Errorf("error while exporting metrics : %v", err)
+		}
+		return resp, err
 	}
-	return resp, err
+	return nil, nil
 }
 
 func (lmi *LMMetricIngest) UpdateResourceProperties(resName string, resIDs, resProps map[string]string, patch bool) (*utils.Response, error) {

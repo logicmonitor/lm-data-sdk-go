@@ -32,6 +32,7 @@ type LMLogIngest struct {
 	auth     model.AuthProvider
 }
 
+// NewLMLogIngest initializes LMLogIngest
 func NewLMLogIngest(ctx context.Context, opts ...Option) (*LMLogIngest, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: false, MinVersion: tls.VersionTLS12}
@@ -58,6 +59,7 @@ func NewLMLogIngest(ctx context.Context, opts ...Option) (*LMLogIngest, error) {
 	return &lli, nil
 }
 
+// SendLogs is the entry point for receiving log data
 func (lli *LMLogIngest) SendLogs(ctx context.Context, logMessage string, resourceidMap, metadata map[string]string) (*utils.Response, error) {
 	timestamp := strconv.Itoa(int(time.Now().Unix()))
 	logsV1 := model.LogInput{
@@ -84,20 +86,24 @@ func (lli *LMLogIngest) SendLogs(ctx context.Context, logMessage string, resourc
 	return nil, nil
 }
 
+// addRequest adds incoming log requests to logBatch internal cache
 func addRequest(logInput model.LogInput) {
 	logBatchMutex.Lock()
 	defer logBatchMutex.Unlock()
 	logBatch = append(logBatch, logInput)
 }
 
+// BatchInterval returns the time interval for batching
 func (lli *LMLogIngest) BatchInterval() time.Duration {
 	return lli.interval
 }
 
+// URI returns the endpoint/uri of log ingest API
 func (lli *LMLogIngest) URI() string {
 	return uri
 }
 
+// CreateRequestBody prepares log payload from the requests present in cache after batch interval expires
 func (lli *LMLogIngest) CreateRequestBody() internal.DataPayload {
 	var logPayloadList []model.LogPayload
 	logBatchMutex.Lock()
@@ -124,6 +130,7 @@ func (lli *LMLogIngest) CreateRequestBody() internal.DataPayload {
 	return payloadList
 }
 
+// ExportData exports logs to the LM platform
 func (lli *LMLogIngest) ExportData(payloadList internal.DataPayload, uri, method string) (*utils.Response, error) {
 	if len(payloadList.LogBodyList) > 0 {
 		body, err := json.Marshal(payloadList.LogBodyList)

@@ -24,6 +24,7 @@ type LMIngest interface {
 	ExportData(body DataPayload, uri, method string) (*utils.Response, error)
 }
 
+// CreateAndExportData creates and exports data (if batching is enabled) after batching interval expires
 func CreateAndExportData(li LMIngest) {
 	ticker := time.NewTicker(li.BatchInterval())
 	for range ticker.C {

@@ -36,20 +36,12 @@ func GetToken(method, resourcePath string, body []byte) string {
 	if bearerToken == "" {
 		bearerToken = os.Getenv("LOGICMONITOR_BEARER_TOKEN")
 	}
-	var token string
 	if accessID != "" && accessKey != "" {
-		token = generateLMv1Token(method, accessID, accessKey, body, resourcePath).String()
+		return generateLMv1Token(method, accessID, accessKey, body, resourcePath).String()
 	} else if bearerToken != "" {
-		token = "Bearer " + bearerToken
+		return "Bearer " + bearerToken
 	}
-	// } else {
-	// 	if collToken != "" {
-	// 		token = collToken
-	// 	} else {
-	// 		return "", fmt.Errorf("Authenticate must provide environment variable `LM_ACCESS_ID` and `LM_ACCESS_KEY` OR `LM_BEARER_TOKEN`")
-	// 	}
-	// }
-	return token
+	return ""
 }
 
 func (t *Lmv1Token) String() string {
