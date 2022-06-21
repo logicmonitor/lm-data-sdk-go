@@ -5,8 +5,8 @@ import (
 )
 
 const (
-	PACKAGE_ID      = "logicmonitor_data_sdk/"
-	PACKAGE_VERSION = "0.0.1.alpha"
+	PACKAGE_ID      = "lm-data-sdk-go/"
+	PACKAGE_VERSION = "0.3.0"
 	OS_NAME         = runtime.GOOS
 	ARCH            = runtime.GOARCH
 )

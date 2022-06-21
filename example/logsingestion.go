@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -12,22 +13,27 @@ func main_logs() {
 	logstr2 := "This is 2nd log"
 	logstr3 := "this is 3rd log"
 
-	lmLog, err := logs.NewLMLogIngest(true, 10)
+	var options []logs.Option
+	options = []logs.Option{
+		logs.WithLogBatchingEnabled(3 * time.Second),
+	}
+
+	lmLog, err := logs.NewLMLogIngest(context.Background(), options...)
 	if err != nil {
 		fmt.Println("Error in initilaizing log ingest ", err)
 		return
 	}
 
 	fmt.Println("Sending log1....")
-	lmLog.SendLogs(logstr, map[string]string{"system.displayname": "demo_OTEL_71086"}, map[string]string{"testkey": "testvalue"})
+	lmLog.SendLogs(context.Background(), logstr, map[string]string{"system.displayname": "example-cart-service"}, map[string]string{"testkey": "testvalue"})
 
 	time.Sleep(2 * time.Second)
 	fmt.Println("Sending log2....")
-	lmLog.SendLogs(logstr2, map[string]string{"system.displayname": "demo_OTEL_71086"}, map[string]string{"testkey": "testvalue"})
+	lmLog.SendLogs(context.Background(), logstr2, map[string]string{"system.displayname": "example-cart-service"}, map[string]string{"testkey": "testvalue"})
 
 	time.Sleep(3 * time.Second)
 	fmt.Println("Sending log3....")
-	lmLog.SendLogs(logstr3, map[string]string{"system.displayname": "demo_OTEL_71086"}, map[string]string{"testkey": "testvalue"})
+	lmLog.SendLogs(context.Background(), logstr3, map[string]string{"system.displayname": "example-cart-service"}, map[string]string{"testkey": "testvalue"})
 
-	time.Sleep(2 * time.Minute)
+	time.Sleep(10 * time.Second)
 }

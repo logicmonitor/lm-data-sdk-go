@@ -24,6 +24,7 @@ type LMIngest interface {
 	ExportData(body DataPayload, uri, method string) (*utils.Response, error)
 }
 
+// CreateAndExportData creates and exports data (if batching is enabled) after batching interval expires
 func CreateAndExportData(li LMIngest) {
 	ticker := time.NewTicker(li.BatchInterval())
 	for range ticker.C {
@@ -36,10 +37,9 @@ func CreateAndExportData(li LMIngest) {
 }
 
 // MakeRequest compresses the payload and exports it to LM Platform
-func MakeRequest(client *http.Client, url string, body []byte, uri, method string) (*utils.Response, error) {
-	token, err := utils.GetToken(method, body, uri)
-	if err != nil {
-		return nil, err
+func MakeRequest(client *http.Client, url string, body []byte, uri, method, token string) (*utils.Response, error) {
+	if token == "" {
+		return nil, fmt.Errorf("Missing authentication token.")
 	}
 	compressedBody, err := utils.Gzip(body)
 	if err != nil {

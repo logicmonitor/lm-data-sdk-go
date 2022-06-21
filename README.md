@@ -11,7 +11,7 @@ Similarly, If a log integration isn’t available or you have custom logs that y
 
 ### Set Configurations
 While using LMv1 authentication set LM_ACCESS_ID and LM_ACCESS_KEY properties.
-In Case of BearerToken Authentication set LM_BEARER_TOKEN property. 
+In case of BearerToken authentication set LM_BEARER_TOKEN property. 
 Company's name or Account name must be passed to LM_ACCOUNT property. 
 All properties can be set using environment variable.
 
@@ -23,13 +23,14 @@ All properties can be set using environment variable.
 |   LM_BEARER_TOKEN    |	BearerToken while using Bearer authentication.|
 
 ### Metrics Ingestion:
-For metrics ingestion, user must create a object of ResourceInput, DataSourceInput, InstanceInput and DataPointInput using `github.com/logicmonitor/lm-data-sdk-go/model`.
-Create NewLMMetricIngest by passing batch as true (if batching to be enabled) and interval (value in seconds) as parameters. Then call SendMetrics by passing all the attributes as input parameters.
+For metrics ingestion, user must create an object of ResourceInput, DataSourceInput, InstanceInput and DataPointInput by passing relevant metric and attribute values to the struct fields using package `github.com/logicmonitor/lm-data-sdk-go/model`.
+Initialize metric ingest by calling NewLMMetricIngest. If user wants to enable batching, pass an option `WithMetricBatchingEnabled(batchinterval)` to NewLMMetricIngest() function call.
+For exporting metrics to LM platform, call SendMetrics by passing all the attributes as input parameters.
 
     // fill the values
 	rInput := model.ResourceInput{
-		ResourceName: "jyoti-1006-aci_OTEL_29591",
-		ResourceID: map[string]string{"system.displayname": "jyoti-1006-aci_OTEL_29591"},
+		ResourceName: "example-cart-service",
+		ResourceID: map[string]string{"system.displayname": "example-cart-service"},
 	}
 
 	dsInput := model.DatasourceInput{
@@ -50,15 +51,33 @@ Create NewLMMetricIngest by passing batch as true (if batching to be enabled) an
 		Value:                    map[string]string{fmt.Sprintf("%d", time.Now().Unix()): "124"},
 	}
 
-	lmMetric := metrics.NewLMMetricIngest(true, 10)
-	lmMetric.SendMetrics(rInput, dsInput, insInput, dpInput)
+	options := []metrics.Option{
+		metrics.WithMetricBatchingEnabled(3 * time.Second),
+	}
+
+	lmMetric, err := metrics.NewLMMetricIngest(context.Background(), options...)
+	if err != nil {
+		fmt.Println("Error in initializing metric ingest :", err)
+		return
+	}
+	lmMetric.SendMetrics(context.Background(), rInput, dsInput, insInput, dpInput)
 
 ### Logs Ingestion
 
-Create NewLMLogIngest by passing batch as true (if batching to be enabled) and interval value as parameters. Then call SendLogs by passing 'log message', 'resourceID' and 'metadata' as input parameters.
+Initialize log ingest by calling NewLMLogIngest. If user wants to enable batching, pass an option `WithLogBatchingEnabled(batchinterval)` to NewLMLogIngest() function call.
+For exporting logs to LM platform, call SendLogs by passing `log message`, `resource ID` and `metadatamap` as input parameters.
 
 ```
-lmLog := logs.NewLMLogIngest(false, 10)
+var options []logs.Option
+options = []logs.Option{
+	logs.WithLogBatchingEnabled(3 * time.Second),
+}
+
+lmLog, err := logs.NewLMLogIngest(context.Background(), options...)
+if err != nil {
+	fmt.Println("Error in initilaizing log ingest ", err)
+	return
+}
 lmLog.SendLogs(logstr, map[string]string{"system.displayname": "device-name-test"}, map[string]string{"testkey": "testvalue"})
 ```
 

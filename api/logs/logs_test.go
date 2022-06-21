@@ -1,11 +1,13 @@
 package logs
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/logicmonitor/lm-data-sdk-go/model"
 	"github.com/logicmonitor/lm-data-sdk-go/utils"
@@ -13,8 +15,7 @@ import (
 
 func TestNewLMLogIngest(t *testing.T) {
 	type args struct {
-		batch    bool
-		interval int
+		option []Option
 	}
 
 	tests := []struct {
@@ -24,15 +25,15 @@ func TestNewLMLogIngest(t *testing.T) {
 		{
 			name: "New LMLog Ingest with Batching enabled",
 			args: args{
-				batch:    true,
-				interval: 10,
+				option: []Option{
+					WithLogBatchingEnabled(5 * time.Second),
+				},
 			},
 		},
 		{
 			name: "New LMLog Ingest without Batching enabled",
 			args: args{
-				batch:    false,
-				interval: 10,
+				option: []Option{},
 			},
 		},
 	}
@@ -40,7 +41,8 @@ func TestNewLMLogIngest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			setEnv()
-			_, err := NewLMLogIngest(tt.args.batch, tt.args.interval)
+
+			_, err := NewLMLogIngest(context.Background(), tt.args.option...)
 			if err != nil {
 				t.Errorf("NewLMLogIngest() error = %v", err)
 				return
@@ -48,36 +50,6 @@ func TestNewLMLogIngest(t *testing.T) {
 		})
 	}
 	cleanupEnv()
-}
-
-func TestNewLMLogIngestError(t *testing.T) {
-	type args struct {
-		batch    bool
-		interval int
-	}
-
-	tests := []struct {
-		name string
-		args args
-	}{
-		{
-			name: "New LMLog Ingest without env set",
-			args: args{
-				batch:    true,
-				interval: 10,
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewLMLogIngest(tt.args.batch, tt.args.interval)
-			if err == nil {
-				t.Errorf("NewLMLogIngest() expected error = %v", err)
-				return
-			}
-		})
-	}
 }
 
 func TestSendLogs(t *testing.T) {
@@ -97,11 +69,9 @@ func TestSendLogs(t *testing.T) {
 	}
 
 	type fields struct {
-		// Input configuration.
-		batch    bool
-		interval int
-		client   *http.Client
-		url      string
+		client *http.Client
+		url    string
+		auth   model.AuthProvider
 	}
 
 	test := struct {
@@ -111,10 +81,9 @@ func TestSendLogs(t *testing.T) {
 	}{
 		name: "Test log export without batching",
 		fields: fields{
-			batch:    false,
-			interval: 10,
-			client:   ts.Client(),
-			url:      ts.URL,
+			client: ts.Client(),
+			url:    ts.URL,
+			auth:   model.DefaultAuthenticator{},
 		},
 		args: args{
 			log:        "This is test message",
@@ -127,12 +96,11 @@ func TestSendLogs(t *testing.T) {
 
 		setEnv()
 		e := &LMLogIngest{
-			batch:    test.fields.batch,
-			interval: test.fields.interval,
-			client:   test.fields.client,
-			url:      test.fields.url,
+			client: test.fields.client,
+			url:    test.fields.url,
+			auth:   test.fields.auth,
 		}
-		_, err := e.SendLogs(test.args.log, test.args.resourceId, test.args.metadata)
+		_, err := e.SendLogs(context.Background(), test.args.log, test.args.resourceId, test.args.metadata)
 		if err != nil {
 			t.Errorf("SendLogs() error = %v", err)
 			return
@@ -159,11 +127,9 @@ func TestSendLogsError(t *testing.T) {
 	}
 
 	type fields struct {
-		// Input configuration.
-		batch    bool
-		interval int
-		client   *http.Client
-		url      string
+		client *http.Client
+		url    string
+		auth   model.AuthProvider
 	}
 
 	test := struct {
@@ -171,12 +137,11 @@ func TestSendLogsError(t *testing.T) {
 		fields fields
 		args   args
 	}{
-		name: "Test log export without batching",
+		name: "Test Connection Timeout",
 		fields: fields{
-			batch:    false,
-			interval: 10,
-			client:   ts.Client(),
-			url:      ts.URL,
+			client: ts.Client(),
+			url:    ts.URL,
+			auth:   model.DefaultAuthenticator{},
 		},
 		args: args{
 			log:        "This is test message",
@@ -189,12 +154,11 @@ func TestSendLogsError(t *testing.T) {
 
 		setEnv()
 		e := &LMLogIngest{
-			batch:    test.fields.batch,
-			interval: test.fields.interval,
-			client:   test.fields.client,
-			url:      test.fields.url,
+			client: test.fields.client,
+			url:    test.fields.url,
+			auth:   test.fields.auth,
 		}
-		_, err := e.SendLogs(test.args.log, test.args.resourceId, test.args.metadata)
+		_, err := e.SendLogs(context.Background(), test.args.log, test.args.resourceId, test.args.metadata)
 		if err == nil {
 			t.Errorf("SendLogs() expected error but got = %v", err)
 			return
@@ -220,11 +184,9 @@ func TestSendLogsBatch(t *testing.T) {
 	}
 
 	type fields struct {
-		// Input configuration.
-		batch    bool
-		interval int
-		client   *http.Client
-		url      string
+		client *http.Client
+		url    string
+		auth   model.AuthProvider
 	}
 
 	test := struct {
@@ -234,10 +196,9 @@ func TestSendLogsBatch(t *testing.T) {
 	}{
 		name: "Test log export with batching",
 		fields: fields{
-			batch:    true,
-			interval: 10,
-			client:   ts.Client(),
-			url:      ts.URL,
+			client: ts.Client(),
+			url:    ts.URL,
+			auth:   model.DefaultAuthenticator{},
 		},
 		args: args{
 			log:        "This is test batch message",
@@ -249,13 +210,11 @@ func TestSendLogsBatch(t *testing.T) {
 	t.Run(test.name, func(t *testing.T) {
 
 		setLMEnv()
-		e := &LMLogIngest{
-			batch:    test.fields.batch,
-			interval: test.fields.interval,
-			client:   test.fields.client,
-			url:      test.fields.url,
+		option := []Option{
+			WithLogBatchingEnabled(5 * time.Second),
 		}
-		_, err := e.SendLogs(test.args.log, test.args.resourceId, test.args.metadata)
+		e, err := NewLMLogIngest(context.Background(), option...)
+		_, err = e.SendLogs(context.Background(), test.args.log, test.args.resourceId, test.args.metadata)
 		if err != nil {
 			t.Errorf("SendLogs() error = %v", err)
 			return
@@ -291,10 +250,8 @@ func TestCreateRestLogsBody(t *testing.T) {
 		w.Write(body)
 	}))
 	e := &LMLogIngest{
-		batch:    true,
-		interval: 0,
-		client:   ts.Client(),
-		url:      ts.URL,
+		client: ts.Client(),
+		url:    ts.URL,
 	}
 
 	logInput1 := model.LogInput{
