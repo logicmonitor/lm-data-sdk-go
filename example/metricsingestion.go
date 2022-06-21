@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -9,16 +10,62 @@ import (
 )
 
 func main_metrics() {
+	var options []metrics.Option
+	options = []metrics.Option{
+		metrics.WithMetricBatchingEnabled(3 * time.Second),
+	}
 
-	lmMetric, err := metrics.NewLMMetricIngest(false, 10)
+	lmMetric, err := metrics.NewLMMetricIngest(context.Background(), options...)
 	if err != nil {
 		fmt.Println("Error in initializing metric ingest :", err)
 		return
 	}
+
+	rInput, dsInput, insInput, dpInput := createInput1()
+	_, err = lmMetric.SendMetrics(context.Background(), rInput, dsInput, insInput, dpInput)
+	if err != nil {
+		fmt.Println("Error in sending 1st metric: ", err)
+	}
+	time.Sleep(3 * time.Second)
+
+	rInput1, dsInput1, insInput1, dpInput1 := createInput2()
+	_, err = lmMetric.SendMetrics(context.Background(), rInput1, dsInput1, insInput1, dpInput1)
+	if err != nil {
+		fmt.Println("Error in sending 2nd metric: ", err)
+	}
+	time.Sleep(5 * time.Second)
+
+	rInput2, dsInput2, insInput2, dpInput2 := createInput3()
+	_, err = lmMetric.SendMetrics(context.Background(), rInput2, dsInput2, insInput2, dpInput2)
+	if err != nil {
+		fmt.Println("Error in sending 3rd metric: ", err)
+	}
+
+	resName := "example-cart-service"
+	resProp := map[string]string{"propkey": "updatedprop"}
+	rId := map[string]string{"system.displayname": "example-cart-service"}
+	insProp := map[string]string{"propkey": "updatedprop"}
+	dsName := "TestDataSource"
+	dsDisplayName := "TestDisplayName"
+	insName := "DataSDK"
+	patch := true
+
+	_, err = lmMetric.UpdateInstanceProperties(rId, insProp, dsName, dsDisplayName, insName, patch)
+	if err != nil {
+		fmt.Println("Error in updating instance properties: ", err)
+	}
+
+	_, err = lmMetric.UpdateResourceProperties(resName, rId, resProp, patch)
+	if err != nil {
+		fmt.Println("Error in updating resource properties: ", err)
+	}
+}
+
+func createInput1() (model.ResourceInput, model.DatasourceInput, model.InstanceInput, model.DataPointInput) {
 	// fill the values
 	rInput := model.ResourceInput{
 		ResourceName: "demo_OTEL_71086",
-		ResourceID:   map[string]string{"system.displayname": "demo_OTEL_71086"},
+		ResourceID:   map[string]string{"system.displayname": "example-cart-service"},
 	}
 
 	dsInput := model.DatasourceInput{
@@ -38,62 +85,59 @@ func main_metrics() {
 		DataPointAggregationType: "SUM",
 		Value:                    map[string]string{fmt.Sprintf("%d", time.Now().Unix()): "124"},
 	}
+	return rInput, dsInput, insInput, dpInput
+}
 
-	lmMetric.SendMetrics(rInput, dsInput, insInput, dpInput)
-
-	time.Sleep(3 * time.Second)
-
+func createInput2() (model.ResourceInput, model.DatasourceInput, model.InstanceInput, model.DataPointInput) {
 	// fill the values
-	rInput1 := model.ResourceInput{
+	rInput := model.ResourceInput{
 		ResourceName: "demo_OTEL_71086",
-		ResourceID:   map[string]string{"system.displayname": "demo_OTEL_71086"},
+		ResourceID:   map[string]string{"system.displayname": "example-cart-service"},
 	}
 
-	dsInput1 := model.DatasourceInput{
+	dsInput := model.DatasourceInput{
 		DataSourceName:        "GoSDK",
 		DataSourceDisplayName: "GoSDK",
 		DataSourceGroup:       "Sdk",
 	}
 
-	insInput1 := model.InstanceInput{
+	insInput := model.InstanceInput{
 		InstanceName:       "TelemetrySDK",
 		InstanceProperties: map[string]string{"test": "telemetrysdk"},
 	}
 
-	dpInput1 := model.DataPointInput{
+	dpInput := model.DataPointInput{
 		DataPointName:            "cpu",
 		DataPointType:            "GAUGE",
 		DataPointAggregationType: "SUM",
 		Value:                    map[string]string{fmt.Sprintf("%d", time.Now().Unix()): "124"},
 	}
+	return rInput, dsInput, insInput, dpInput
+}
 
-	lmMetric.SendMetrics(rInput1, dsInput1, insInput1, dpInput1)
-
-	time.Sleep(5 * time.Second)
-
+func createInput3() (model.ResourceInput, model.DatasourceInput, model.InstanceInput, model.DataPointInput) {
 	// fill the values
-	rInput2 := model.ResourceInput{
+	rInput := model.ResourceInput{
 		ResourceName: "demo_OTEL_71086",
-		ResourceID:   map[string]string{"system.displayname": "demo_OTEL_71086"},
+		ResourceID:   map[string]string{"system.displayname": "example-cart-service"},
 	}
 
-	dsInput2 := model.DatasourceInput{
+	dsInput := model.DatasourceInput{
 		DataSourceName:        "GoSDK",
 		DataSourceDisplayName: "GoSDK",
 		DataSourceGroup:       "Sdk",
 	}
 
-	insInput2 := model.InstanceInput{
+	insInput := model.InstanceInput{
 		InstanceName:       "TelemetrySDK",
 		InstanceProperties: map[string]string{"test": "telemetrysdk"},
 	}
 
-	dpInput2 := model.DataPointInput{
+	dpInput := model.DataPointInput{
 		DataPointName:            "memory",
 		DataPointType:            "GAUGE",
 		DataPointAggregationType: "SUM",
 		Value:                    map[string]string{fmt.Sprintf("%d", time.Now().Unix()): "14"},
 	}
-
-	lmMetric.SendMetrics(rInput2, dsInput2, insInput2, dpInput2)
+	return rInput, dsInput, insInput, dpInput
 }
