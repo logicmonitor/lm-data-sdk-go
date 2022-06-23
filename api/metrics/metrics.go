@@ -40,6 +40,7 @@ type LMMetricIngest struct {
 	batch    bool
 	interval time.Duration
 	auth     model.AuthProvider
+	gzip     bool
 }
 
 // NewLMMetricIngest initializes LMMetricIngest
@@ -58,6 +59,7 @@ func NewLMMetricIngest(ctx context.Context, opts ...Option) (*LMMetricIngest, er
 		client: &client,
 		url:    metricsURL,
 		auth:   model.DefaultAuthenticator{},
+		gzip:   true,
 	}
 	for _, opt := range opts {
 		if err := opt(&lmi); err != nil {
@@ -304,7 +306,7 @@ func (lmi *LMMetricIngest) ExportData(payloadList internal.DataPayload, uri, met
 			errStrings = append(errStrings, "error in marshaling update property metric payload: "+err.Error())
 		}
 		token := lmi.auth.GetCredentials(method, uri, payloadBody)
-		_, err = internal.MakeRequest(lmi.client, lmi.url, payloadBody, uri, method, token)
+		_, err = internal.MakeRequest(lmi.client, lmi.url, payloadBody, uri, method, token, lmi.gzip)
 		if err != nil {
 			errStrings = append(errStrings, "error in updating properties: "+err.Error())
 		}
@@ -315,7 +317,7 @@ func (lmi *LMMetricIngest) ExportData(payloadList internal.DataPayload, uri, met
 			errStrings = append(errStrings, "error in marshaling metric payload: "+err.Error())
 		}
 		token := lmi.auth.GetCredentials(method, uri, payloadBody)
-		_, err = internal.MakeRequest(lmi.client, lmi.url, payloadBody, uri, method, token)
+		_, err = internal.MakeRequest(lmi.client, lmi.url, payloadBody, uri, method, token, lmi.gzip)
 		if err != nil {
 			errStrings = append(errStrings, "error while exporting metrics: "+err.Error())
 		}
@@ -327,7 +329,7 @@ func (lmi *LMMetricIngest) ExportData(payloadList internal.DataPayload, uri, met
 			errStrings = append(errStrings, "error in marshaling metric payload with create flag: "+err.Error())
 		}
 		token := lmi.auth.GetCredentials(method, metricURI, payloadBody)
-		_, err = internal.MakeRequest(lmi.client, lmi.url, payloadBody, metricURI, method, token)
+		_, err = internal.MakeRequest(lmi.client, lmi.url, payloadBody, metricURI, method, token, lmi.gzip)
 		if err != nil {
 			errStrings = append(errStrings, "error while exporting metrics with create flag : "+err.Error())
 		}

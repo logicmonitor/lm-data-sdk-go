@@ -30,6 +30,7 @@ type LMLogIngest struct {
 	batch    bool
 	interval time.Duration
 	auth     model.AuthProvider
+	gzip     bool
 }
 
 // NewLMLogIngest initializes LMLogIngest
@@ -47,6 +48,7 @@ func NewLMLogIngest(ctx context.Context, opts ...Option) (*LMLogIngest, error) {
 		client: &client,
 		url:    logsURL,
 		auth:   model.DefaultAuthenticator{},
+		gzip:   true,
 	}
 	for _, opt := range opts {
 		if err := opt(&lli); err != nil {
@@ -138,7 +140,7 @@ func (lli *LMLogIngest) ExportData(payloadList internal.DataPayload, uri, method
 			return fmt.Errorf("error in marshaling log payload: %v", err)
 		}
 		token := lli.auth.GetCredentials(method, uri, body)
-		_, err = internal.MakeRequest(lli.client, lli.url, body, uri, method, token)
+		_, err = internal.MakeRequest(lli.client, lli.url, body, uri, method, token, lli.gzip)
 		if err != nil {
 			return fmt.Errorf("error while exporting logs : %v", err)
 		}
