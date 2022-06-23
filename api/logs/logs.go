@@ -60,7 +60,7 @@ func NewLMLogIngest(ctx context.Context, opts ...Option) (*LMLogIngest, error) {
 }
 
 // SendLogs is the entry point for receiving log data
-func (lli *LMLogIngest) SendLogs(ctx context.Context, logMessage string, resourceidMap, metadata map[string]string) (*utils.Response, error) {
+func (lli *LMLogIngest) SendLogs(ctx context.Context, logMessage string, resourceidMap, metadata map[string]string) error {
 	timestamp := strconv.Itoa(int(time.Now().Unix()))
 	logsV1 := model.LogInput{
 		Message:    logMessage,
@@ -83,7 +83,7 @@ func (lli *LMLogIngest) SendLogs(ctx context.Context, logMessage string, resourc
 		}
 		return lli.ExportData(logPayloadList, uri, http.MethodPost)
 	}
-	return nil, nil
+	return nil
 }
 
 // addRequest adds incoming log requests to logBatch internal cache
@@ -131,18 +131,18 @@ func (lli *LMLogIngest) CreateRequestBody() internal.DataPayload {
 }
 
 // ExportData exports logs to the LM platform
-func (lli *LMLogIngest) ExportData(payloadList internal.DataPayload, uri, method string) (*utils.Response, error) {
+func (lli *LMLogIngest) ExportData(payloadList internal.DataPayload, uri, method string) error {
 	if len(payloadList.LogBodyList) > 0 {
 		body, err := json.Marshal(payloadList.LogBodyList)
 		if err != nil {
-			return nil, fmt.Errorf("error in marshaling log payload: %v", err)
+			return fmt.Errorf("error in marshaling log payload: %v", err)
 		}
 		token := lli.auth.GetCredentials(method, uri, body)
-		resp, err := internal.MakeRequest(lli.client, lli.url, body, uri, method, token)
+		_, err = internal.MakeRequest(lli.client, lli.url, body, uri, method, token)
 		if err != nil {
-			return resp, fmt.Errorf("error while exporting logs : %v", err)
+			return fmt.Errorf("error while exporting logs : %v", err)
 		}
-		return resp, err
+		return err
 	}
-	return nil, nil
+	return nil
 }

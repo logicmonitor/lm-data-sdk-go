@@ -12,16 +12,17 @@ import (
 )
 
 type DataPayload struct {
-	MetricBodyList       []model.MetricPayload
-	LogBodyList          []model.LogPayload
-	UpdatePropertiesBody model.UpdateProperties
+	MetricBodyList           []model.MetricPayload
+	MetricResourceCreateList []model.MetricPayload
+	LogBodyList              []model.LogPayload
+	UpdatePropertiesBody     model.UpdateProperties
 }
 
 type LMIngest interface {
 	BatchInterval() time.Duration
 	URI() string
 	CreateRequestBody() DataPayload
-	ExportData(body DataPayload, uri, method string) (*utils.Response, error)
+	ExportData(body DataPayload, uri, method string) error
 }
 
 // CreateAndExportData creates and exports data (if batching is enabled) after batching interval expires
@@ -29,9 +30,9 @@ func CreateAndExportData(li LMIngest) {
 	ticker := time.NewTicker(li.BatchInterval())
 	for range ticker.C {
 		body := li.CreateRequestBody()
-		_, err := li.ExportData(body, li.URI(), http.MethodPost)
+		err := li.ExportData(body, li.URI(), http.MethodPost)
 		if err != nil {
-			log.Println("error while exporting data..", err)
+			log.Println(err)
 		}
 	}
 }
