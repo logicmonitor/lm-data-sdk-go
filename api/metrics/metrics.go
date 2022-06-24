@@ -18,6 +18,7 @@ import (
 
 const (
 	uri              = "/v2/metric/ingest"
+	createFlag       = "?create=true"
 	updateResPropURI = "/resource_property/ingest"
 	updateInsPropURI = "/instance_property/ingest"
 	defaultAggType   = "none"
@@ -39,6 +40,7 @@ type LMMetricIngest struct {
 	batch    bool
 	interval time.Duration
 	auth     model.AuthProvider
+	gzip     bool
 }
 
 // NewLMMetricIngest initializes LMMetricIngest
@@ -57,6 +59,7 @@ func NewLMMetricIngest(ctx context.Context, opts ...Option) (*LMMetricIngest, er
 		client: &client,
 		url:    metricsURL,
 		auth:   model.DefaultAuthenticator{},
+		gzip:   true,
 	}
 	for _, opt := range opts {
 		if err := opt(&lmi); err != nil {
@@ -70,10 +73,10 @@ func NewLMMetricIngest(ctx context.Context, opts ...Option) (*LMMetricIngest, er
 }
 
 // SendMetrics is the entry point for receiving metric data. It also validates the attributes of metrics before creating metric payload.
-func (lmi *LMMetricIngest) SendMetrics(ctx context.Context, rInput model.ResourceInput, dsInput model.DatasourceInput, instInput model.InstanceInput, dpInput model.DataPointInput) (*utils.Response, error) {
+func (lmi *LMMetricIngest) SendMetrics(ctx context.Context, rInput model.ResourceInput, dsInput model.DatasourceInput, instInput model.InstanceInput, dpInput model.DataPointInput) error {
 	errorMsg := validator.ValidateAttributes(rInput, dsInput, instInput, dpInput)
 	if errorMsg != "" {
-		return nil, fmt.Errorf("Validation failed : %s", errorMsg)
+		return fmt.Errorf("Validation failed : %s", errorMsg)
 	}
 
 	dsInput, instInput, dpInput = setDefaultValues(dsInput, instInput, dpInput)
@@ -89,12 +92,19 @@ func (lmi *LMMetricIngest) SendMetrics(ctx context.Context, rInput model.Resourc
 	} else {
 		payload := createSingleRequestBody(input)
 		singlePayloadBody := append([]model.MetricPayload{}, payload)
-		payloadList := internal.DataPayload{
-			MetricBodyList: singlePayloadBody,
+		var payloadList internal.DataPayload
+		if input.Resource.IsCreate {
+			payloadList = internal.DataPayload{
+				MetricResourceCreateList: singlePayloadBody,
+			}
+		} else {
+			payloadList = internal.DataPayload{
+				MetricBodyList: singlePayloadBody,
+			}
 		}
 		return lmi.ExportData(payloadList, uri, http.MethodPost)
 	}
-	return nil, nil
+	return nil
 }
 
 // setDefaultValues sets default values to missing or empty attribute fields
@@ -234,9 +244,10 @@ func (lmi LMMetricIngest) URI() string {
 
 // createRestMetricsPayload prepares metrics payload
 func (lmi *LMMetricIngest) createRestMetricsPayload() internal.DataPayload {
-	var payload model.MetricPayload
 	var payloadList []model.MetricPayload
+	var payloadListCreateFlag []model.MetricPayload
 	for resName, resDetails := range resourceMap {
+		var payload model.MetricPayload
 		payload.ResourceName = resDetails.ResourceName
 		payload.ResourceID = resDetails.ResourceID
 		payload.ResourceDescription = resDetails.ResourceDescription
@@ -266,13 +277,18 @@ func (lmi *LMMetricIngest) createRestMetricsPayload() internal.DataPayload {
 					instances = append(instances, model.Instance{InstanceName: instance.InstanceName, InstanceID: instance.InstanceID, InstanceDisplayName: instance.InstanceDisplayName, InstanceGroup: instance.InstanceGroup, InstanceProperties: instance.InstanceProperties, DataPoints: dataPoints})
 				}
 				payload.Instances = instances
-				payloadList = append(payloadList, payload)
 			}
+		}
+		if resDetails.IsCreate {
+			payloadListCreateFlag = append(payloadListCreateFlag, payload)
+		} else {
+			payloadList = append(payloadList, payload)
 		}
 	}
 
 	metricPayload := internal.DataPayload{
-		MetricBodyList: payloadList,
+		MetricBodyList:           payloadList,
+		MetricResourceCreateList: payloadListCreateFlag,
 	}
 	// flushing out the metric batch after exporting
 	if lmi.batch {
@@ -282,36 +298,51 @@ func (lmi *LMMetricIngest) createRestMetricsPayload() internal.DataPayload {
 }
 
 // ExportData exports metrics to the LM platform
-func (lmi *LMMetricIngest) ExportData(payloadList internal.DataPayload, uri, method string) (*utils.Response, error) {
-	var payloadBody []byte
-	var err error
+func (lmi *LMMetricIngest) ExportData(payloadList internal.DataPayload, uri, method string) error {
+	var errStrings []string
 	if method == http.MethodPatch || method == http.MethodPut {
-		payloadBody, err = json.Marshal(payloadList.UpdatePropertiesBody)
+		payloadBody, err := json.Marshal(payloadList.UpdatePropertiesBody)
 		if err != nil {
-			return nil, fmt.Errorf("error in marshaling update property payload: %v", err)
+			errStrings = append(errStrings, "error in marshaling update property metric payload: "+err.Error())
 		}
-	} else {
-		if len(payloadList.MetricBodyList) > 0 {
-			payloadBody, err = json.Marshal(payloadList.MetricBodyList)
-			if err != nil {
-				return nil, fmt.Errorf("error in marshaling metric payload: %v", err)
-			}
-		}
-	}
-	if payloadBody != nil {
 		token := lmi.auth.GetCredentials(method, uri, payloadBody)
-		resp, err := internal.MakeRequest(lmi.client, lmi.url, payloadBody, uri, method, token)
+		_, err = internal.MakeRequest(lmi.client, lmi.url, payloadBody, uri, method, token, lmi.gzip)
 		if err != nil {
-			return resp, fmt.Errorf("error while exporting metrics : %v", err)
+			errStrings = append(errStrings, "error in updating properties: "+err.Error())
 		}
-		return resp, err
 	}
-	return nil, nil
+	if len(payloadList.MetricBodyList) > 0 {
+		payloadBody, err := json.Marshal(payloadList.MetricBodyList)
+		if err != nil {
+			errStrings = append(errStrings, "error in marshaling metric payload: "+err.Error())
+		}
+		token := lmi.auth.GetCredentials(method, uri, payloadBody)
+		_, err = internal.MakeRequest(lmi.client, lmi.url, payloadBody, uri, method, token, lmi.gzip)
+		if err != nil {
+			errStrings = append(errStrings, "error while exporting metrics: "+err.Error())
+		}
+	}
+	if len(payloadList.MetricResourceCreateList) > 0 {
+		metricURI := uri + createFlag
+		payloadBody, err := json.Marshal(payloadList.MetricResourceCreateList)
+		if err != nil {
+			errStrings = append(errStrings, "error in marshaling metric payload with create flag: "+err.Error())
+		}
+		token := lmi.auth.GetCredentials(method, metricURI, payloadBody)
+		_, err = internal.MakeRequest(lmi.client, lmi.url, payloadBody, metricURI, method, token, lmi.gzip)
+		if err != nil {
+			errStrings = append(errStrings, "error while exporting metrics with create flag : "+err.Error())
+		}
+	}
+	if len(errStrings) > 0 {
+		return fmt.Errorf(strings.Join(errStrings, "\n"))
+	}
+	return nil
 }
 
-func (lmi *LMMetricIngest) UpdateResourceProperties(resName string, resIDs, resProps map[string]string, patch bool) (*utils.Response, error) {
+func (lmi *LMMetricIngest) UpdateResourceProperties(resName string, resIDs, resProps map[string]string, patch bool) error {
 	if resName == "" || resIDs == nil || resProps == nil {
-		return nil, fmt.Errorf("One of the fields: resource name, resource ids or resource properties, is missing.")
+		return fmt.Errorf("One of the fields: resource name, resource ids or resource properties, is missing.")
 	}
 	errorMsg := ""
 	errorMsg += validator.CheckResourceNameValidation(false, resName)
@@ -319,7 +350,7 @@ func (lmi *LMMetricIngest) UpdateResourceProperties(resName string, resIDs, resP
 	errorMsg += validator.CheckResourcePropertiesValidation(resProps)
 
 	if errorMsg != "" {
-		return nil, fmt.Errorf("Validation failed: %v ", errorMsg)
+		return fmt.Errorf("Validation failed: %v ", errorMsg)
 	}
 	updateResProp := model.UpdateProperties{
 		ResourceName:       resName,
@@ -334,16 +365,12 @@ func (lmi *LMMetricIngest) UpdateResourceProperties(resName string, resIDs, resP
 	updateResPropBody := internal.DataPayload{
 		UpdatePropertiesBody: updateResProp,
 	}
-	resp, err := lmi.ExportData(updateResPropBody, updateResPropURI, method)
-	if err != nil {
-		return nil, fmt.Errorf("error in updating resource properties: %v", err)
-	}
-	return resp, nil
+	return lmi.ExportData(updateResPropBody, updateResPropURI, method)
 }
 
-func (lmi *LMMetricIngest) UpdateInstanceProperties(resIDs, insProps map[string]string, dsName, dsDisplayName, insName string, patch bool) (*utils.Response, error) {
+func (lmi *LMMetricIngest) UpdateInstanceProperties(resIDs, insProps map[string]string, dsName, dsDisplayName, insName string, patch bool) error {
 	if resIDs == nil || insProps == nil || dsName == "" || insName == "" {
-		return nil, fmt.Errorf("One of the fields: instance name, datasource name, resource ids, or instance properties, is missing.")
+		return fmt.Errorf("One of the fields: instance name, datasource name, resource ids, or instance properties, is missing.")
 	}
 	errorMsg := ""
 	errorMsg += validator.CheckResourceIDValidation(resIDs)
@@ -353,7 +380,7 @@ func (lmi *LMMetricIngest) UpdateInstanceProperties(resIDs, insProps map[string]
 	errorMsg += validator.CheckDSDisplayNameValidation(dsDisplayName)
 
 	if errorMsg != "" {
-		return nil, fmt.Errorf("Validation failed: %v", errorMsg)
+		return fmt.Errorf("Validation failed: %v", errorMsg)
 	}
 
 	method := http.MethodPut
@@ -370,9 +397,6 @@ func (lmi *LMMetricIngest) UpdateInstanceProperties(resIDs, insProps map[string]
 	updateInsPropBody := internal.DataPayload{
 		UpdatePropertiesBody: updateInsProp,
 	}
-	resp, err := lmi.ExportData(updateInsPropBody, updateInsPropURI, method)
-	if err != nil {
-		return nil, fmt.Errorf("error in updating instance properties: %v", err)
-	}
-	return resp, nil
+	return lmi.ExportData(updateInsPropBody, updateInsPropURI, method)
+
 }

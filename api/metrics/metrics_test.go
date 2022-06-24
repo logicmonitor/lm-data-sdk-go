@@ -104,7 +104,68 @@ func TestSendMetrics(t *testing.T) {
 			url:    test.fields.url,
 			auth:   test.fields.auth,
 		}
-		_, err := e.SendMetrics(context.Background(), test.args.rInput, test.args.dsInput, test.args.instInput, test.args.dpInput)
+		err := e.SendMetrics(context.Background(), test.args.rInput, test.args.dsInput, test.args.instInput, test.args.dpInput)
+		if err != nil {
+			t.Errorf("SendMetrics() error = %v", err)
+			return
+		}
+	})
+	cleanUp()
+}
+
+func TestSendMetricsResCreate(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		response := utils.Response{
+			Success: true,
+			Message: "Metrics exported successfully!!",
+		}
+		body, _ := json.Marshal(response)
+		w.Write(body)
+	}))
+
+	type args struct {
+		rInput    model.ResourceInput
+		dsInput   model.DatasourceInput
+		instInput model.InstanceInput
+		dpInput   model.DataPointInput
+	}
+
+	type fields struct {
+		client *http.Client
+		url    string
+		auth   model.AuthProvider
+	}
+
+	rInput1, dsInput1, insInput1, dpInput1 := getInputResCreate()
+
+	test := struct {
+		name   string
+		fields fields
+		args   args
+	}{
+		name: "Test metric export without batching",
+		fields: fields{
+			client: ts.Client(),
+			url:    ts.URL,
+			auth:   model.DefaultAuthenticator{},
+		},
+		args: args{
+			rInput:    rInput1,
+			dsInput:   dsInput1,
+			instInput: insInput1,
+			dpInput:   dpInput1,
+		},
+	}
+
+	t.Run(test.name, func(t *testing.T) {
+
+		setEnv()
+		e := &LMMetricIngest{
+			client: test.fields.client,
+			url:    test.fields.url,
+			auth:   test.fields.auth,
+		}
+		err := e.SendMetrics(context.Background(), test.args.rInput, test.args.dsInput, test.args.instInput, test.args.dpInput)
 		if err != nil {
 			t.Errorf("SendMetrics() error = %v", err)
 			return
@@ -166,7 +227,7 @@ func TestSendMetricsError(t *testing.T) {
 			url:    test.fields.url,
 			auth:   test.fields.auth,
 		}
-		_, err := e.SendMetrics(context.Background(), test.args.rInput, test.args.dsInput, test.args.instInput, test.args.dpInput)
+		err := e.SendMetrics(context.Background(), test.args.rInput, test.args.dsInput, test.args.instInput, test.args.dpInput)
 		if err == nil {
 			t.Errorf("SendMetrics() expect error but got error = %v", err)
 			return
@@ -205,7 +266,7 @@ func TestSendMetricsBatch(t *testing.T) {
 		fields fields
 		args   args
 	}{
-		name: "Test metric export without batching",
+		name: "Test metric export with batching",
 		fields: fields{
 			client: ts.Client(),
 			url:    ts.URL,
@@ -222,12 +283,15 @@ func TestSendMetricsBatch(t *testing.T) {
 	t.Run(test.name, func(t *testing.T) {
 
 		setEnv()
+		prepareMetricsRequestCache()
 		e := &LMMetricIngest{
-			client: test.fields.client,
-			url:    test.fields.url,
-			auth:   test.fields.auth,
+			client:   test.fields.client,
+			url:      test.fields.url,
+			auth:     test.fields.auth,
+			batch:    true,
+			interval: 2 * time.Second,
 		}
-		_, err := e.SendMetrics(context.Background(), test.args.rInput, test.args.dsInput, test.args.instInput, test.args.dpInput)
+		err := e.SendMetrics(context.Background(), test.args.rInput, test.args.dsInput, test.args.instInput, test.args.dpInput)
 		if err != nil {
 			t.Errorf("SendMetrics() error = %v", err)
 			return
@@ -262,6 +326,7 @@ func TestMergeRequest(t *testing.T) {
 		client: ts.Client(),
 		url:    ts.URL,
 		auth:   model.DefaultAuthenticator{},
+		batch:  true,
 	}
 
 	prepareMetricsRequestCache()
@@ -281,8 +346,33 @@ func TestMergeRequest(t *testing.T) {
 
 func getInput() (model.ResourceInput, model.DatasourceInput, model.InstanceInput, model.DataPointInput) {
 	rInput1 := model.ResourceInput{
-		ResourceName: "test-demo_OTEL_71086",
-		ResourceID:   map[string]string{"system.displayname": "test-demo_OTEL_71086"},
+		ResourceName: "test-cart-service",
+		ResourceID:   map[string]string{"system.displayname": "test-cart-service"},
+	}
+
+	dsInput1 := model.DatasourceInput{
+		DataSourceName:  "GoSDK",
+		DataSourceGroup: "Sdk",
+	}
+
+	insInput1 := model.InstanceInput{
+		InstanceName:       "DataSDK",
+		InstanceProperties: map[string]string{"test": "datasdk"},
+	}
+
+	dpInput1 := model.DataPointInput{
+		DataPointName: "cpu",
+		DataPointType: "COUNTER",
+		Value:         map[string]string{fmt.Sprintf("%d", time.Now().Unix()): "124"},
+	}
+	return rInput1, dsInput1, insInput1, dpInput1
+}
+
+func getInputResCreate() (model.ResourceInput, model.DatasourceInput, model.InstanceInput, model.DataPointInput) {
+	rInput1 := model.ResourceInput{
+		ResourceName: "test-cart-service",
+		ResourceID:   map[string]string{"system.displayname": "test-cart-service"},
+		IsCreate:     true,
 	}
 
 	dsInput1 := model.DatasourceInput{
@@ -316,8 +406,8 @@ func getSingleRequest() model.MetricsInput {
 
 func prepareMetricsRequestCache() {
 	rInput := model.ResourceInput{
-		ResourceName: "test-demo_OTEL_71086",
-		ResourceID:   map[string]string{"system.displayname": "test-demo_OTEL_71086"},
+		ResourceName: "test-cart-service",
+		ResourceID:   map[string]string{"system.displayname": "test-cart-service"},
 	}
 
 	dsInput := model.DatasourceInput{
@@ -346,9 +436,9 @@ func prepareMetricsRequestCache() {
 	}
 
 	rInput1 := model.ResourceInput{
-		ResourceName: "test-demo_OTEL_71086",
-		//ResourceDescription: "Testing",
-		ResourceID: map[string]string{"system.displayname": "test-demo_OTEL_71086"},
+		ResourceName: "test-payment-service",
+		ResourceID:   map[string]string{"system.displayname": "test-cart-service"},
+		IsCreate:     true,
 	}
 
 	dsInput1 := model.DatasourceInput{
@@ -425,7 +515,7 @@ func TestUpdateResourceProperties(t *testing.T) {
 		},
 		args: args{
 			resName: "TestResource",
-			rId:     map[string]string{"system.displayname": "test-demo_OTEL_71086"},
+			rId:     map[string]string{"system.displayname": "test-cart-service"},
 			resProp: map[string]string{"new": "updatedprop"},
 			patch:   false,
 		},
@@ -439,7 +529,7 @@ func TestUpdateResourceProperties(t *testing.T) {
 			url:    test.fields.url,
 			auth:   test.fields.auth,
 		}
-		_, err := e.UpdateResourceProperties(test.args.resName, test.args.rId, test.args.resProp, test.args.patch)
+		err := e.UpdateResourceProperties(test.args.resName, test.args.rId, test.args.resProp, test.args.patch)
 		if err != nil {
 			t.Errorf("UpdateResourceProperties() error = %v", err)
 			return
@@ -484,7 +574,7 @@ func TestUpdateResourcePropertiesValidation(t *testing.T) {
 		},
 		args: args{
 			resName: "Test",
-			rId:     map[string]string{"system.displayname": "test-demo_OTEL_71086"},
+			rId:     map[string]string{"system.displayname": "test-cart-service"},
 			resProp: map[string]string{"new": ""},
 			patch:   false,
 		},
@@ -498,7 +588,7 @@ func TestUpdateResourcePropertiesValidation(t *testing.T) {
 			url:    test.fields.url,
 			auth:   test.fields.auth,
 		}
-		_, err := e.UpdateResourceProperties(test.args.resName, test.args.rId, test.args.resProp, test.args.patch)
+		err := e.UpdateResourceProperties(test.args.resName, test.args.rId, test.args.resProp, test.args.patch)
 		if err == nil {
 			t.Errorf("UpdateResourceProperties() expect error, but got error = nil")
 			return
@@ -544,7 +634,7 @@ func TestUpdateResourcePropertiesError(t *testing.T) {
 		},
 		args: args{
 			resName: "Test",
-			rId:     map[string]string{"system.displayname": "test-demo_OTEL_71086"},
+			rId:     map[string]string{"system.displayname": "test-cart-service"},
 			resProp: map[string]string{"new": "updatedprop"},
 			patch:   true,
 		},
@@ -558,7 +648,7 @@ func TestUpdateResourcePropertiesError(t *testing.T) {
 			url:    test.fields.url,
 			auth:   test.fields.auth,
 		}
-		_, err := e.UpdateResourceProperties(test.args.resName, test.args.rId, test.args.resProp, test.args.patch)
+		err := e.UpdateResourceProperties(test.args.resName, test.args.rId, test.args.resProp, test.args.patch)
 		if err == nil {
 			t.Errorf("UpdateResourceProperties() should generate error but error is nil")
 			return
@@ -604,7 +694,7 @@ func TestUpdateInstanceProperties(t *testing.T) {
 			auth:   model.DefaultAuthenticator{},
 		},
 		args: args{
-			rId:           map[string]string{"system.displayname": "test-demo_OTEL_71086"},
+			rId:           map[string]string{"system.displayname": "test-cart-service"},
 			insProp:       map[string]string{"new": "updatedprop"},
 			dsName:        "TestDS",
 			dsDisplayName: "TestDisplayName",
@@ -621,7 +711,7 @@ func TestUpdateInstanceProperties(t *testing.T) {
 			url:    test.fields.url,
 			auth:   test.fields.auth,
 		}
-		_, err := e.UpdateInstanceProperties(test.args.rId, test.args.insProp, test.args.dsName, test.args.dsDisplayName, test.args.insName, test.args.patch)
+		err := e.UpdateInstanceProperties(test.args.rId, test.args.insProp, test.args.dsName, test.args.dsDisplayName, test.args.insName, test.args.patch)
 		if err != nil {
 			t.Errorf("UpdateInstanceProperties() error = %v", err)
 			return
@@ -668,7 +758,7 @@ func TestUpdateInstancePropertiesValidation(t *testing.T) {
 			auth:   model.DefaultAuthenticator{},
 		},
 		args: args{
-			rId:           map[string]string{"system.displayname": "test-demo_OTEL_71086"},
+			rId:           map[string]string{"system.displayname": "test-cart-service"},
 			insProp:       map[string]string{"new": ""},
 			dsName:        "TestDS",
 			dsDisplayName: "TestDisplayName",
@@ -685,7 +775,7 @@ func TestUpdateInstancePropertiesValidation(t *testing.T) {
 			url:    test.fields.url,
 			auth:   test.fields.auth,
 		}
-		_, err := e.UpdateInstanceProperties(test.args.rId, test.args.insProp, test.args.dsName, test.args.dsDisplayName, test.args.insName, test.args.patch)
+		err := e.UpdateInstanceProperties(test.args.rId, test.args.insProp, test.args.dsName, test.args.dsDisplayName, test.args.insName, test.args.patch)
 		if err == nil {
 			t.Errorf("UpdateInstanceProperties() expect error  but got error = nil")
 			return
@@ -733,7 +823,7 @@ func TestUpdateInstancePropertiesError(t *testing.T) {
 			auth:   model.DefaultAuthenticator{},
 		},
 		args: args{
-			rId:           map[string]string{"system.displayname": "test-demo_OTEL_71086"},
+			rId:           map[string]string{"system.displayname": "test-cart-service"},
 			insProp:       map[string]string{"new": "updatedprop"},
 			dsName:        "TestDS",
 			dsDisplayName: "TestDisplayName",
@@ -750,7 +840,7 @@ func TestUpdateInstancePropertiesError(t *testing.T) {
 			url:    test.fields.url,
 			auth:   test.fields.auth,
 		}
-		_, err := e.UpdateInstanceProperties(test.args.rId, test.args.insProp, test.args.dsName, test.args.dsDisplayName, test.args.insName, test.args.patch)
+		err := e.UpdateInstanceProperties(test.args.rId, test.args.insProp, test.args.dsName, test.args.dsDisplayName, test.args.insName, test.args.patch)
 		if err == nil {
 			t.Errorf("UpdateInstanceProperties() error expected but got error = nil")
 			return

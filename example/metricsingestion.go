@@ -22,25 +22,24 @@ func main_metrics() {
 	}
 
 	rInput, dsInput, insInput, dpInput := createInput1()
-	_, err = lmMetric.SendMetrics(context.Background(), rInput, dsInput, insInput, dpInput)
+	err = lmMetric.SendMetrics(context.Background(), rInput, dsInput, insInput, dpInput)
 	if err != nil {
 		fmt.Println("Error in sending 1st metric: ", err)
 	}
-	time.Sleep(3 * time.Second)
+	time.Sleep(1 * time.Second)
 
 	rInput1, dsInput1, insInput1, dpInput1 := createInput2()
-	_, err = lmMetric.SendMetrics(context.Background(), rInput1, dsInput1, insInput1, dpInput1)
+	err = lmMetric.SendMetrics(context.Background(), rInput1, dsInput1, insInput1, dpInput1)
 	if err != nil {
 		fmt.Println("Error in sending 2nd metric: ", err)
 	}
-	time.Sleep(5 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	rInput2, dsInput2, insInput2, dpInput2 := createInput3()
-	_, err = lmMetric.SendMetrics(context.Background(), rInput2, dsInput2, insInput2, dpInput2)
+	err = lmMetric.SendMetrics(context.Background(), rInput2, dsInput2, insInput2, dpInput2)
 	if err != nil {
 		fmt.Println("Error in sending 3rd metric: ", err)
 	}
-
 	resName := "example-cart-service"
 	resProp := map[string]string{"propkey": "updatedprop"}
 	rId := map[string]string{"system.displayname": "example-cart-service"}
@@ -50,22 +49,23 @@ func main_metrics() {
 	insName := "DataSDK"
 	patch := true
 
-	_, err = lmMetric.UpdateInstanceProperties(rId, insProp, dsName, dsDisplayName, insName, patch)
+	err = lmMetric.UpdateInstanceProperties(rId, insProp, dsName, dsDisplayName, insName, patch)
 	if err != nil {
 		fmt.Println("Error in updating instance properties: ", err)
 	}
 
-	_, err = lmMetric.UpdateResourceProperties(resName, rId, resProp, patch)
+	err = lmMetric.UpdateResourceProperties(resName, rId, resProp, patch)
 	if err != nil {
 		fmt.Println("Error in updating resource properties: ", err)
 	}
+	time.Sleep(10 * time.Second)
 }
 
 func createInput1() (model.ResourceInput, model.DatasourceInput, model.InstanceInput, model.DataPointInput) {
 	// fill the values
 	rInput := model.ResourceInput{
-		ResourceName: "demo_OTEL_71086",
-		ResourceID:   map[string]string{"system.displayname": "example-cart-service"},
+		ResourceName: "example-payment-service",
+		ResourceID:   map[string]string{"system.displayname": "example-payment-service"},
 	}
 
 	dsInput := model.DatasourceInput{
@@ -91,13 +91,14 @@ func createInput1() (model.ResourceInput, model.DatasourceInput, model.InstanceI
 func createInput2() (model.ResourceInput, model.DatasourceInput, model.InstanceInput, model.DataPointInput) {
 	// fill the values
 	rInput := model.ResourceInput{
-		ResourceName: "demo_OTEL_71086",
-		ResourceID:   map[string]string{"system.displayname": "example-cart-service"},
+		ResourceName: "example-checkout-service",
+		ResourceID:   map[string]string{"system.displayname": "example-checkout-service"},
+		IsCreate:     true,
 	}
 
 	dsInput := model.DatasourceInput{
-		DataSourceName:        "GoSDK",
-		DataSourceDisplayName: "GoSDK",
+		DataSourceName:        "JavaSDK",
+		DataSourceDisplayName: "JavaSDK",
 		DataSourceGroup:       "Sdk",
 	}
 
@@ -118,8 +119,9 @@ func createInput2() (model.ResourceInput, model.DatasourceInput, model.InstanceI
 func createInput3() (model.ResourceInput, model.DatasourceInput, model.InstanceInput, model.DataPointInput) {
 	// fill the values
 	rInput := model.ResourceInput{
-		ResourceName: "demo_OTEL_71086",
+		ResourceName: "example-cart-service",
 		ResourceID:   map[string]string{"system.displayname": "example-cart-service"},
+		IsCreate:     true,
 	}
 
 	dsInput := model.DatasourceInput{

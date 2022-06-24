@@ -100,7 +100,7 @@ func TestSendLogs(t *testing.T) {
 			url:    test.fields.url,
 			auth:   test.fields.auth,
 		}
-		_, err := e.SendLogs(context.Background(), test.args.log, test.args.resourceId, test.args.metadata)
+		err := e.SendLogs(context.Background(), test.args.log, test.args.resourceId, test.args.metadata)
 		if err != nil {
 			t.Errorf("SendLogs() error = %v", err)
 			return
@@ -158,7 +158,7 @@ func TestSendLogsError(t *testing.T) {
 			url:    test.fields.url,
 			auth:   test.fields.auth,
 		}
-		_, err := e.SendLogs(context.Background(), test.args.log, test.args.resourceId, test.args.metadata)
+		err := e.SendLogs(context.Background(), test.args.log, test.args.resourceId, test.args.metadata)
 		if err == nil {
 			t.Errorf("SendLogs() expected error but got = %v", err)
 			return
@@ -210,11 +210,14 @@ func TestSendLogsBatch(t *testing.T) {
 	t.Run(test.name, func(t *testing.T) {
 
 		setLMEnv()
-		option := []Option{
-			WithLogBatchingEnabled(5 * time.Second),
+		e := &LMLogIngest{
+			client:   test.fields.client,
+			url:      test.fields.url,
+			auth:     test.fields.auth,
+			batch:    true,
+			interval: 1 * time.Second,
 		}
-		e, err := NewLMLogIngest(context.Background(), option...)
-		_, err = e.SendLogs(context.Background(), test.args.log, test.args.resourceId, test.args.metadata)
+		err := e.SendLogs(context.Background(), test.args.log, test.args.resourceId, test.args.metadata)
 		if err != nil {
 			t.Errorf("SendLogs() error = %v", err)
 			return

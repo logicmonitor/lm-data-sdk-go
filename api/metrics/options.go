@@ -24,3 +24,12 @@ func WithAuthentication(authProvider model.AuthProvider) Option {
 		return nil
 	}
 }
+
+// WithGzipCompression can be used to enable/disable gzip compression of metric payload
+// Note: By default, gzip compression is enabled.
+func WithGzipCompression(gzip bool) Option {
+	return func(lmh *LMMetricIngest) error {
+		lmh.gzip = gzip
+		return nil
+	}
+}

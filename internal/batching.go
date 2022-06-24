@@ -12,16 +12,17 @@ import (
 )
 
 type DataPayload struct {
-	MetricBodyList       []model.MetricPayload
-	LogBodyList          []model.LogPayload
-	UpdatePropertiesBody model.UpdateProperties
+	MetricBodyList           []model.MetricPayload
+	MetricResourceCreateList []model.MetricPayload
+	LogBodyList              []model.LogPayload
+	UpdatePropertiesBody     model.UpdateProperties
 }
 
 type LMIngest interface {
 	BatchInterval() time.Duration
 	URI() string
 	CreateRequestBody() DataPayload
-	ExportData(body DataPayload, uri, method string) (*utils.Response, error)
+	ExportData(body DataPayload, uri, method string) error
 }
 
 // CreateAndExportData creates and exports data (if batching is enabled) after batching interval expires
@@ -29,23 +30,27 @@ func CreateAndExportData(li LMIngest) {
 	ticker := time.NewTicker(li.BatchInterval())
 	for range ticker.C {
 		body := li.CreateRequestBody()
-		_, err := li.ExportData(body, li.URI(), http.MethodPost)
+		err := li.ExportData(body, li.URI(), http.MethodPost)
 		if err != nil {
-			log.Println("error while exporting data..", err)
+			log.Println(err)
 		}
 	}
 }
 
 // MakeRequest compresses the payload and exports it to LM Platform
-func MakeRequest(client *http.Client, url string, body []byte, uri, method, token string) (*utils.Response, error) {
+func MakeRequest(client *http.Client, url string, body []byte, uri, method, token string, gzip bool) (*utils.Response, error) {
 	if token == "" {
 		return nil, fmt.Errorf("Missing authentication token.")
 	}
-	compressedBody, err := utils.Gzip(body)
-	if err != nil {
-		return nil, fmt.Errorf("error while compressing body: %v", err)
+	payloadBody := body
+	var err error
+	if gzip {
+		payloadBody, err = utils.Gzip(payloadBody)
+		if err != nil {
+			return nil, fmt.Errorf("error while compressing body: %v", err)
+		}
 	}
-	reqBody := bytes.NewBuffer(compressedBody)
+	reqBody := bytes.NewBuffer(payloadBody)
 	fullURL := url + uri
 
 	req, err := http.NewRequest(method, fullURL, reqBody)
@@ -55,7 +60,9 @@ func MakeRequest(client *http.Client, url string, body []byte, uri, method, toke
 	req.Header.Add("Content-Type", "application/json")
 	req.Header.Add("Authorization", token)
 	req.Header.Add("User-Agent", utils.BuildUserAgent())
-	req.Header.Add("Content-Encoding", "gzip")
+	if gzip {
+		req.Header.Add("Content-Encoding", "gzip")
+	}
 
 	httpResp, err := client.Do(req)
 	if err != nil {
