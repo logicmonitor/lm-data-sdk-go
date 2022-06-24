@@ -10,17 +10,17 @@ type Option func(*LMMetricIngest) error
 
 // WithMetricBatchingEnabled is used for enabling batching for metrics. Pass time interval for batch as an input parameter.
 func WithMetricBatchingEnabled(batchingInterval time.Duration) Option {
-	return func(lmh *LMMetricIngest) error {
-		lmh.batch = true
-		lmh.interval = batchingInterval
+	return func(lmi *LMMetricIngest) error {
+		lmi.batch = true
+		lmi.interval = batchingInterval
 		return nil
 	}
 }
 
 // WithAuthentication is used for passing authentication token if not set in environment variables.
 func WithAuthentication(authProvider model.AuthProvider) Option {
-	return func(lmh *LMMetricIngest) error {
-		lmh.auth = authProvider
+	return func(lmi *LMMetricIngest) error {
+		lmi.auth = authProvider
 		return nil
 	}
 }
@@ -28,8 +28,8 @@ func WithAuthentication(authProvider model.AuthProvider) Option {
 // WithGzipCompression can be used to enable/disable gzip compression of metric payload
 // Note: By default, gzip compression is enabled.
 func WithGzipCompression(gzip bool) Option {
-	return func(lmh *LMMetricIngest) error {
-		lmh.gzip = gzip
+	return func(lmi *LMMetricIngest) error {
+		lmi.gzip = gzip
 		return nil
 	}
 }

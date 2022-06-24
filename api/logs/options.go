@@ -10,17 +10,17 @@ type Option func(*LMLogIngest) error
 
 // WithLogBatchingEnabled is used for enabling batching for logs. Pass time interval for batch as an input parameter.
 func WithLogBatchingEnabled(batchingInterval time.Duration) Option {
-	return func(lmh *LMLogIngest) error {
-		lmh.batch = true
-		lmh.interval = batchingInterval
+	return func(lli *LMLogIngest) error {
+		lli.batch = true
+		lli.interval = batchingInterval
 		return nil
 	}
 }
 
 // WithAuthentication is used for passing authentication token if not set in environment variables.
 func WithAuthentication(authProvider model.AuthProvider) Option {
-	return func(lmh *LMLogIngest) error {
-		lmh.auth = authProvider
+	return func(lli *LMLogIngest) error {
+		lli.auth = authProvider
 		return nil
 	}
 }
@@ -28,8 +28,8 @@ func WithAuthentication(authProvider model.AuthProvider) Option {
 // WithGzipCompression can be used to enable/disable gzip compression of log payload
 // Note: By default, gzip compression is enabled.
 func WithGzipCompression(gzip bool) Option {
-	return func(lmh *LMLogIngest) error {
-		lmh.gzip = gzip
+	return func(lli *LMLogIngest) error {
+		lli.gzip = gzip
 		return nil
 	}
 }
