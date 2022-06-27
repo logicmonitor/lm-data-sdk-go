@@ -328,7 +328,7 @@ func (lmi *LMMetricIngest) ExportData(payloadList internal.DataPayload, uri, met
 		if err != nil {
 			errStrings = append(errStrings, "error in marshaling metric payload with create flag: "+err.Error())
 		}
-		token := lmi.auth.GetCredentials(method, metricURI, payloadBody)
+		token := lmi.auth.GetCredentials(method, uri, payloadBody)
 		_, err = internal.MakeRequest(lmi.client, lmi.url, payloadBody, metricURI, method, token, lmi.gzip)
 		if err != nil {
 			errStrings = append(errStrings, "error while exporting metrics with create flag : "+err.Error())
