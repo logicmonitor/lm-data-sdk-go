@@ -275,14 +275,14 @@ func (lmi *LMMetricIngest) createRestMetricsPayload() internal.DataPayload {
 						}
 					}
 					instances = append(instances, model.Instance{InstanceName: instance.InstanceName, InstanceID: instance.InstanceID, InstanceDisplayName: instance.InstanceDisplayName, InstanceGroup: instance.InstanceGroup, InstanceProperties: instance.InstanceProperties, DataPoints: dataPoints})
+					payload.Instances = instances
+					if resDetails.IsCreate {
+						payloadListCreateFlag = append(payloadListCreateFlag, payload)
+					} else {
+						payloadList = append(payloadList, payload)
+					}
 				}
-				payload.Instances = instances
 			}
-		}
-		if resDetails.IsCreate {
-			payloadListCreateFlag = append(payloadListCreateFlag, payload)
-		} else {
-			payloadList = append(payloadList, payload)
 		}
 	}
 
