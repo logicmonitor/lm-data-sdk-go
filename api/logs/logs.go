@@ -16,7 +16,10 @@ import (
 )
 
 const (
-	uri = "/log/ingest"
+	uri          = "/log/ingest"
+	message      = "msg"
+	resourceID   = "_lm.resourceId"
+	timestampKey = "timestamp"
 )
 
 var (
@@ -68,17 +71,21 @@ func (lli *LMLogIngest) SendLogs(ctx context.Context, logMessage string, resourc
 		Message:    logMessage,
 		ResourceID: resourceidMap,
 		Metadata:   metadata,
-		Timestamp:  timestamp}
+		Timestamp:  timestamp,
+	}
 
 	if lli.batch {
 		addRequest(logsV1)
 	} else {
-		body := model.LogPayload{
-			Message:    logMessage,
-			ResourceID: resourceidMap,
-			Metadata:   metadata,
-			Timestamp:  timestamp,
+		var body model.LogPayload
+		body = make(map[string]interface{}, 0)
+		body[message] = logMessage
+		body[resourceID] = resourceidMap
+		body[timestampKey] = timestamp
+		for k, v := range metadata {
+			body[k] = v
 		}
+
 		bodyarr := append([]model.LogPayload{}, body)
 		logPayloadList := internal.DataPayload{
 			LogBodyList: bodyarr,
@@ -114,11 +121,13 @@ func (lli *LMLogIngest) CreateRequestBody() internal.DataPayload {
 		return internal.DataPayload{}
 	}
 	for _, logsV1 := range logBatch {
-		body := model.LogPayload{
-			Message:    logsV1.Message,
-			ResourceID: logsV1.ResourceID,
-			Metadata:   logsV1.Metadata,
-			Timestamp:  logsV1.Timestamp,
+		var body model.LogPayload
+		body = make(map[string]interface{}, 0)
+		body[message] = logsV1.Message
+		body[resourceID] = logsV1.ResourceID
+		body[timestampKey] = logsV1.Timestamp
+		for k, v := range logsV1.Metadata {
+			body[k] = v
 		}
 		logPayloadList = append(logPayloadList, body)
 	}
