@@ -20,31 +20,47 @@ func TestNewLMMetricIngest(t *testing.T) {
 	}
 
 	tests := []struct {
-		name string
-		args args
+		name                string
+		args                args
+		wantBatchingEnabled bool
+		wantInterval        time.Duration
 	}{
 		{
-			name: "New LM Metric Ingest with Batching enabled",
+			name: "New LM Metric Ingest with Batching interval passed",
 			args: args{
 				option: []Option{
-					WithMetricBatchingEnabled(5 * time.Second),
+					WithMetricBatchingInterval(5 * time.Second),
 				},
 			},
+			wantBatchingEnabled: true,
+			wantInterval:        5 * time.Second,
 		},
 		{
-			name: "New LM Metric Ingest without Batching enabled",
+			name: "New LM Metric Ingest with Batching disabled",
 			args: args{
-				option: []Option{},
+				option: []Option{
+					WithMetricBatchingDisabled(),
+				},
 			},
+			wantBatchingEnabled: false,
+			wantInterval:        10 * time.Second,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			setEnv()
-			_, err := NewLMMetricIngest(context.Background(), tt.args.option...)
+			lmi, err := NewLMMetricIngest(context.Background(), tt.args.option...)
 			if err != nil {
 				t.Errorf("NewLMMetricIngest() error = %v", err)
+				return
+			}
+			if lmi.interval != tt.wantInterval {
+				t.Errorf("NewLMMetricIngest() want batch interval = %s , got = %s", tt.wantInterval, lmi.interval)
+				return
+			}
+			if lmi.batch != tt.wantBatchingEnabled {
+				t.Errorf("NewLMMetricIngest() want batching enabled = %t , got = %t", tt.wantBatchingEnabled, lmi.batch)
 				return
 			}
 		})

@@ -8,14 +8,14 @@ import (
 	"github.com/logicmonitor/lm-data-sdk-go/api/logs"
 )
 
-func main_logs() {
+func main() {
 	logstr := "This is a test message"
 	logstr2 := "This is 2nd log"
 	logstr3 := "this is 3rd log"
 
 	var options []logs.Option
 	options = []logs.Option{
-		logs.WithLogBatchingEnabled(3 * time.Second),
+		logs.WithLogBatchingDisabled(),
 	}
 
 	lmLog, err := logs.NewLMLogIngest(context.Background(), options...)

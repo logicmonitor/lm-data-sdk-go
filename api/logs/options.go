@@ -8,11 +8,18 @@ import (
 
 type Option func(*LMLogIngest) error
 
-// WithLogBatchingEnabled is used for enabling batching for logs. Pass time interval for batch as an input parameter.
-func WithLogBatchingEnabled(batchingInterval time.Duration) Option {
+// WithLogBatchingInterval is used for passing batching time interval for logs.
+func WithLogBatchingInterval(batchingInterval time.Duration) Option {
 	return func(lli *LMLogIngest) error {
-		lli.batch = true
 		lli.interval = batchingInterval
+		return nil
+	}
+}
+
+// WithLogBatchingDisabled is used for disabling log batching.
+func WithLogBatchingDisabled() Option {
+	return func(lli *LMLogIngest) error {
+		lli.batch = false
 		return nil
 	}
 }

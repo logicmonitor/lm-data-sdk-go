@@ -19,22 +19,30 @@ func TestNewLMLogIngest(t *testing.T) {
 	}
 
 	tests := []struct {
-		name string
-		args args
+		name                string
+		args                args
+		wantBatchingEnabled bool
+		wantInterval        time.Duration
 	}{
 		{
-			name: "New LMLog Ingest with Batching enabled",
+			name: "New LMLog Ingest with Batching interval passed",
 			args: args{
 				option: []Option{
-					WithLogBatchingEnabled(5 * time.Second),
+					WithLogBatchingInterval(5 * time.Second),
 				},
 			},
+			wantBatchingEnabled: true,
+			wantInterval:        5 * time.Second,
 		},
 		{
 			name: "New LMLog Ingest without Batching enabled",
 			args: args{
-				option: []Option{},
+				option: []Option{
+					WithLogBatchingDisabled(),
+				},
 			},
+			wantBatchingEnabled: false,
+			wantInterval:        10 * time.Second,
 		},
 	}
 
@@ -42,9 +50,17 @@ func TestNewLMLogIngest(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			setEnv()
 
-			_, err := NewLMLogIngest(context.Background(), tt.args.option...)
+			lli, err := NewLMLogIngest(context.Background(), tt.args.option...)
 			if err != nil {
 				t.Errorf("NewLMLogIngest() error = %v", err)
+				return
+			}
+			if lli.interval != tt.wantInterval {
+				t.Errorf("NewLMLogIngest() want batch interval = %s , got = %s", tt.wantInterval, lli.interval)
+				return
+			}
+			if lli.batch != tt.wantBatchingEnabled {
+				t.Errorf("NewLMLogIngest() want batching enabled = %t , got = %t", tt.wantBatchingEnabled, lli.batch)
 				return
 			}
 		})
