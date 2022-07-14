@@ -32,8 +32,20 @@ func ConvertHTTPToIngestResponse(resp *http.Response) (*Response, error) {
 		return ingestResponse, fmt.Errorf("Invalid Response! , Status Code: %d , Error Message: %s", resp.StatusCode, string(body[:]))
 	}
 	if !(resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusAccepted) {
+		errMsg := ""
+		if resp.StatusCode == http.StatusMultiStatus {
+			for _, responseError := range ingestResponse.Errors {
+				if responseError["message"] != nil {
+					errMsg += responseError["message"].(string)
+				} else if responseError["error"] != nil {
+					errMsg += responseError["error"].(string)
+				}
+			}
+		} else {
+			errMsg = ingestResponse.Message
+		}
 		ingestResponse.Success = false
-		return ingestResponse, fmt.Errorf("Status Code: %d , Error Message: %s", resp.StatusCode, ingestResponse.Message)
+		return ingestResponse, fmt.Errorf("Status Code: %d , Error Message: %s", resp.StatusCode, errMsg)
 	}
 	ingestResponse.RequestID, _ = uuid.Parse(resp.Header.Get("x-request-id"))
 	return ingestResponse, nil

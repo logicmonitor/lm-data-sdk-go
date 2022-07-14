@@ -8,11 +8,18 @@ import (
 
 type Option func(*LMMetricIngest) error
 
-// WithMetricBatchingEnabled is used for enabling batching for metrics. Pass time interval for batch as an input parameter.
-func WithMetricBatchingEnabled(batchingInterval time.Duration) Option {
+// WithMetricBatchingEnabled is used for passing batch time interval.
+func WithMetricBatchingInterval(batchingInterval time.Duration) Option {
 	return func(lmi *LMMetricIngest) error {
-		lmi.batch = true
 		lmi.interval = batchingInterval
+		return nil
+	}
+}
+
+// WithMetricBatchingDisabled is used for disabling metric batching.
+func WithMetricBatchingDisabled() Option {
+	return func(lmi *LMMetricIngest) error {
+		lmi.batch = false
 		return nil
 	}
 }

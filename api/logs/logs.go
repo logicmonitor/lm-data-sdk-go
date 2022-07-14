@@ -16,10 +16,11 @@ import (
 )
 
 const (
-	uri          = "/log/ingest"
-	message      = "msg"
-	resourceID   = "_lm.resourceId"
-	timestampKey = "timestamp"
+	uri                     = "/log/ingest"
+	message                 = "msg"
+	resourceID              = "_lm.resourceId"
+	timestampKey            = "timestamp"
+	defaultBatchingInterval = 10 * time.Second
 )
 
 var (
@@ -48,10 +49,12 @@ func NewLMLogIngest(ctx context.Context, opts ...Option) (*LMLogIngest, error) {
 		return nil, fmt.Errorf("Error in forming Logs URL: %v", err)
 	}
 	lli := LMLogIngest{
-		client: &client,
-		url:    logsURL,
-		auth:   model.DefaultAuthenticator{},
-		gzip:   true,
+		client:   &client,
+		url:      logsURL,
+		batch:    true,
+		interval: defaultBatchingInterval,
+		auth:     model.DefaultAuthenticator{},
+		gzip:     true,
 	}
 	for _, opt := range opts {
 		if err := opt(&lli); err != nil {

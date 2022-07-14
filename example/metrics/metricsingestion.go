@@ -9,10 +9,10 @@ import (
 	"github.com/logicmonitor/lm-data-sdk-go/model"
 )
 
-func main_metrics() {
+func main() {
 	var options []metrics.Option
 	options = []metrics.Option{
-		metrics.WithMetricBatchingEnabled(3 * time.Second),
+		metrics.WithMetricBatchingInterval(3 * time.Second),
 	}
 
 	lmMetric, err := metrics.NewLMMetricIngest(context.Background(), options...)

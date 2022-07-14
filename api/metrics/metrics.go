@@ -17,12 +17,13 @@ import (
 )
 
 const (
-	uri              = "/v2/metric/ingest"
-	createFlag       = "?create=true"
-	updateResPropURI = "/resource_property/ingest"
-	updateInsPropURI = "/instance_property/ingest"
-	defaultAggType   = "none"
-	defaultDPType    = "GAUGE"
+	uri                     = "/v2/metric/ingest"
+	createFlag              = "?create=true"
+	updateResPropURI        = "/resource_property/ingest"
+	updateInsPropURI        = "/instance_property/ingest"
+	defaultAggType          = "none"
+	defaultDPType           = "GAUGE"
+	defaultBatchingInterval = 10 * time.Second
 )
 
 var datapointMap map[string][]model.DataPointInput
@@ -56,10 +57,12 @@ func NewLMMetricIngest(ctx context.Context, opts ...Option) (*LMMetricIngest, er
 	}
 
 	lmi := LMMetricIngest{
-		client: &client,
-		url:    metricsURL,
-		auth:   model.DefaultAuthenticator{},
-		gzip:   true,
+		client:   &client,
+		url:      metricsURL,
+		batch:    true,
+		interval: defaultBatchingInterval,
+		auth:     model.DefaultAuthenticator{},
+		gzip:     true,
 	}
 	for _, opt := range opts {
 		if err := opt(&lmi); err != nil {
