@@ -40,3 +40,11 @@ func WithGzipCompression(gzip bool) Option {
 		return nil
 	}
 }
+
+// WithRateLimit is used to limit the log request count per minute
+func WithRateLimit(requestCount int) Option {
+	return func(lli *LMLogIngest) error {
+		lli.rateLimiterSetting.RequestCount = requestCount
+		return nil
+	}
+}

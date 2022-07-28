@@ -10,9 +10,9 @@ import (
 )
 
 func main() {
-	var options []metrics.Option
-	options = []metrics.Option{
+	options := []metrics.Option{
 		metrics.WithMetricBatchingInterval(3 * time.Second),
+		metrics.WithRateLimit(2),
 	}
 
 	lmMetric, err := metrics.NewLMMetricIngest(context.Background(), options...)

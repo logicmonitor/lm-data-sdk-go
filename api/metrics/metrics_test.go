@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/logicmonitor/lm-data-sdk-go/model"
+	rateLimiter "github.com/logicmonitor/lm-data-sdk-go/pkg/ratelimiter"
 	"github.com/logicmonitor/lm-data-sdk-go/utils"
 )
 
@@ -50,7 +51,9 @@ func TestNewLMMetricIngest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			setEnv()
-			lmi, err := NewLMMetricIngest(context.Background(), tt.args.option...)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			lmi, err := NewLMMetricIngest(ctx, tt.args.option...)
 			if err != nil {
 				t.Errorf("NewLMMetricIngest() error = %v", err)
 				return
@@ -113,12 +116,13 @@ func TestSendMetrics(t *testing.T) {
 	}
 
 	t.Run(test.name, func(t *testing.T) {
-
 		setEnv()
+		rateLimiter, _ := rateLimiter.NewMetricsRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 100})
 		e := &LMMetricIngest{
-			client: test.fields.client,
-			url:    test.fields.url,
-			auth:   test.fields.auth,
+			client:      test.fields.client,
+			url:         test.fields.url,
+			auth:        test.fields.auth,
+			rateLimiter: rateLimiter,
 		}
 		err := e.SendMetrics(context.Background(), test.args.rInput, test.args.dsInput, test.args.instInput, test.args.dpInput)
 		if err != nil {
@@ -174,12 +178,13 @@ func TestSendMetricsResCreate(t *testing.T) {
 	}
 
 	t.Run(test.name, func(t *testing.T) {
-
 		setEnv()
+		rateLimiter, _ := rateLimiter.NewMetricsRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 100})
 		e := &LMMetricIngest{
-			client: test.fields.client,
-			url:    test.fields.url,
-			auth:   test.fields.auth,
+			client:      test.fields.client,
+			url:         test.fields.url,
+			auth:        test.fields.auth,
+			rateLimiter: rateLimiter,
 		}
 		err := e.SendMetrics(context.Background(), test.args.rInput, test.args.dsInput, test.args.instInput, test.args.dpInput)
 		if err != nil {
@@ -236,12 +241,13 @@ func TestSendMetricsError(t *testing.T) {
 	}
 
 	t.Run(test.name, func(t *testing.T) {
-
 		setEnv()
+		rateLimiter, _ := rateLimiter.NewMetricsRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 100})
 		e := &LMMetricIngest{
-			client: test.fields.client,
-			url:    test.fields.url,
-			auth:   test.fields.auth,
+			client:      test.fields.client,
+			url:         test.fields.url,
+			auth:        test.fields.auth,
+			rateLimiter: rateLimiter,
 		}
 		err := e.SendMetrics(context.Background(), test.args.rInput, test.args.dsInput, test.args.instInput, test.args.dpInput)
 		if err == nil {
@@ -297,15 +303,16 @@ func TestSendMetricsBatch(t *testing.T) {
 	}
 
 	t.Run(test.name, func(t *testing.T) {
-
 		setEnv()
+		rateLimiter, _ := rateLimiter.NewMetricsRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 100})
 		prepareMetricsRequestCache()
 		e := &LMMetricIngest{
-			client:   test.fields.client,
-			url:      test.fields.url,
-			auth:     test.fields.auth,
-			batch:    true,
-			interval: 2 * time.Second,
+			client:      test.fields.client,
+			url:         test.fields.url,
+			auth:        test.fields.auth,
+			batch:       true,
+			interval:    2 * time.Second,
+			rateLimiter: rateLimiter,
 		}
 		err := e.SendMetrics(context.Background(), test.args.rInput, test.args.dsInput, test.args.instInput, test.args.dpInput)
 		if err != nil {
@@ -513,9 +520,10 @@ func TestUpdateResourceProperties(t *testing.T) {
 	}
 
 	type fields struct {
-		client *http.Client
-		url    string
-		auth   model.AuthProvider
+		client      *http.Client
+		url         string
+		auth        model.AuthProvider
+		rateLimiter *rateLimiter.MetricsRateLimiter
 	}
 
 	test := struct {
@@ -538,12 +546,13 @@ func TestUpdateResourceProperties(t *testing.T) {
 	}
 
 	t.Run(test.name, func(t *testing.T) {
-
 		setEnv()
+		rateLimiter, _ := rateLimiter.NewMetricsRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 100})
 		e := &LMMetricIngest{
-			client: test.fields.client,
-			url:    test.fields.url,
-			auth:   test.fields.auth,
+			client:      test.fields.client,
+			url:         test.fields.url,
+			auth:        test.fields.auth,
+			rateLimiter: rateLimiter,
 		}
 		err := e.UpdateResourceProperties(test.args.resName, test.args.rId, test.args.resProp, test.args.patch)
 		if err != nil {
@@ -597,12 +606,13 @@ func TestUpdateResourcePropertiesValidation(t *testing.T) {
 	}
 
 	t.Run(test.name, func(t *testing.T) {
-
 		setEnv()
+		rateLimiter, _ := rateLimiter.NewMetricsRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 100})
 		e := &LMMetricIngest{
-			client: test.fields.client,
-			url:    test.fields.url,
-			auth:   test.fields.auth,
+			client:      test.fields.client,
+			url:         test.fields.url,
+			auth:        test.fields.auth,
+			rateLimiter: rateLimiter,
 		}
 		err := e.UpdateResourceProperties(test.args.resName, test.args.rId, test.args.resProp, test.args.patch)
 		if err == nil {
@@ -657,12 +667,13 @@ func TestUpdateResourcePropertiesError(t *testing.T) {
 	}
 
 	t.Run(test.name, func(t *testing.T) {
-
 		setEnv()
+		rateLimiter, _ := rateLimiter.NewMetricsRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 100})
 		e := &LMMetricIngest{
-			client: test.fields.client,
-			url:    test.fields.url,
-			auth:   test.fields.auth,
+			client:      test.fields.client,
+			url:         test.fields.url,
+			auth:        test.fields.auth,
+			rateLimiter: rateLimiter,
 		}
 		err := e.UpdateResourceProperties(test.args.resName, test.args.rId, test.args.resProp, test.args.patch)
 		if err == nil {
@@ -720,12 +731,13 @@ func TestUpdateInstanceProperties(t *testing.T) {
 	}
 
 	t.Run(test.name, func(t *testing.T) {
-
 		setEnv()
+		rateLimiter, _ := rateLimiter.NewMetricsRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 100})
 		e := &LMMetricIngest{
-			client: test.fields.client,
-			url:    test.fields.url,
-			auth:   test.fields.auth,
+			client:      test.fields.client,
+			url:         test.fields.url,
+			auth:        test.fields.auth,
+			rateLimiter: rateLimiter,
 		}
 		err := e.UpdateInstanceProperties(test.args.rId, test.args.insProp, test.args.dsName, test.args.dsDisplayName, test.args.insName, test.args.patch)
 		if err != nil {
@@ -784,12 +796,14 @@ func TestUpdateInstancePropertiesValidation(t *testing.T) {
 	}
 
 	t.Run(test.name, func(t *testing.T) {
-
 		setEnv()
+		rateLimiter, _ := rateLimiter.NewMetricsRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 100})
+
 		e := &LMMetricIngest{
-			client: test.fields.client,
-			url:    test.fields.url,
-			auth:   test.fields.auth,
+			client:      test.fields.client,
+			url:         test.fields.url,
+			auth:        test.fields.auth,
+			rateLimiter: rateLimiter,
 		}
 		err := e.UpdateInstanceProperties(test.args.rId, test.args.insProp, test.args.dsName, test.args.dsDisplayName, test.args.insName, test.args.patch)
 		if err == nil {
@@ -849,12 +863,14 @@ func TestUpdateInstancePropertiesError(t *testing.T) {
 	}
 
 	t.Run(test.name, func(t *testing.T) {
-
 		setEnv()
+		rateLimiter, _ := rateLimiter.NewMetricsRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 100})
+
 		e := &LMMetricIngest{
-			client: test.fields.client,
-			url:    test.fields.url,
-			auth:   test.fields.auth,
+			client:      test.fields.client,
+			url:         test.fields.url,
+			auth:        test.fields.auth,
+			rateLimiter: rateLimiter,
 		}
 		err := e.UpdateInstanceProperties(test.args.rId, test.args.insProp, test.args.dsName, test.args.dsDisplayName, test.args.insName, test.args.patch)
 		if err == nil {

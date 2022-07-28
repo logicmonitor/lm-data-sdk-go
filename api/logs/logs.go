@@ -10,8 +10,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/logicmonitor/lm-data-sdk-go/internal"
+	"github.com/logicmonitor/lm-data-sdk-go/internal/client"
 	"github.com/logicmonitor/lm-data-sdk-go/model"
+	batch "github.com/logicmonitor/lm-data-sdk-go/pkg/batch"
+	rateLimiter "github.com/logicmonitor/lm-data-sdk-go/pkg/ratelimiter"
 	"github.com/logicmonitor/lm-data-sdk-go/utils"
 )
 
@@ -29,12 +31,14 @@ var (
 )
 
 type LMLogIngest struct {
-	client   *http.Client
-	url      string
-	batch    bool
-	interval time.Duration
-	auth     model.AuthProvider
-	gzip     bool
+	client             *http.Client
+	url                string
+	batch              bool
+	interval           time.Duration
+	auth               model.AuthProvider
+	gzip               bool
+	rateLimiterSetting rateLimiter.RateLimiterSetting
+	rateLimiter        rateLimiter.RateLimiter
 }
 
 // NewLMLogIngest initializes LMLogIngest
@@ -46,23 +50,30 @@ func NewLMLogIngest(ctx context.Context, opts ...Option) (*LMLogIngest, error) {
 
 	logsURL, err := utils.URL()
 	if err != nil {
-		return nil, fmt.Errorf("Error in forming Logs URL: %v", err)
+		return nil, fmt.Errorf("error in forming Logs URL: %v", err)
 	}
 	lli := LMLogIngest{
-		client:   &client,
-		url:      logsURL,
-		batch:    true,
-		interval: defaultBatchingInterval,
-		auth:     model.DefaultAuthenticator{},
-		gzip:     true,
+		client:             &client,
+		url:                logsURL,
+		batch:              true,
+		interval:           defaultBatchingInterval,
+		auth:               model.DefaultAuthenticator{},
+		gzip:               true,
+		rateLimiterSetting: rateLimiter.RateLimiterSetting{},
 	}
+
 	for _, opt := range opts {
 		if err := opt(&lli); err != nil {
 			return nil, err
 		}
 	}
+	lli.rateLimiter, err = rateLimiter.NewLogRateLimiter(lli.rateLimiterSetting)
+	if err != nil {
+		return nil, err
+	}
+	go lli.rateLimiter.Run(ctx)
 	if lli.batch {
-		go internal.CreateAndExportData(&lli)
+		go batch.CreateAndExportData(&lli)
 	}
 	return &lli, nil
 }
@@ -90,7 +101,7 @@ func (lli *LMLogIngest) SendLogs(ctx context.Context, logMessage string, resourc
 		}
 
 		bodyarr := append([]model.LogPayload{}, body)
-		logPayloadList := internal.DataPayload{
+		logPayloadList := model.DataPayload{
 			LogBodyList: bodyarr,
 		}
 		return lli.ExportData(logPayloadList, uri, http.MethodPost)
@@ -116,12 +127,12 @@ func (lli *LMLogIngest) URI() string {
 }
 
 // CreateRequestBody prepares log payload from the requests present in cache after batch interval expires
-func (lli *LMLogIngest) CreateRequestBody() internal.DataPayload {
+func (lli *LMLogIngest) CreateRequestBody() model.DataPayload {
 	var logPayloadList []model.LogPayload
 	logBatchMutex.Lock()
 	defer logBatchMutex.Unlock()
 	if len(logBatch) == 0 {
-		return internal.DataPayload{}
+		return model.DataPayload{}
 	}
 	for _, logsV1 := range logBatch {
 		var body model.LogPayload
@@ -134,7 +145,7 @@ func (lli *LMLogIngest) CreateRequestBody() internal.DataPayload {
 		}
 		logPayloadList = append(logPayloadList, body)
 	}
-	payloadList := internal.DataPayload{
+	payloadList := model.DataPayload{
 		LogBodyList: logPayloadList,
 	}
 	// flushing out log batch
@@ -145,14 +156,26 @@ func (lli *LMLogIngest) CreateRequestBody() internal.DataPayload {
 }
 
 // ExportData exports logs to the LM platform
-func (lli *LMLogIngest) ExportData(payloadList internal.DataPayload, uri, method string) error {
+func (lli *LMLogIngest) ExportData(payloadList model.DataPayload, uri, method string) error {
 	if len(payloadList.LogBodyList) > 0 {
 		body, err := json.Marshal(payloadList.LogBodyList)
 		if err != nil {
 			return fmt.Errorf("error in marshaling log payload: %v", err)
 		}
 		token := lli.auth.GetCredentials(method, uri, body)
-		_, err = internal.MakeRequest(lli.client, lli.url, body, uri, method, token, lli.gzip)
+
+		cfg := client.RequestConfig{
+			Client:      lli.client,
+			RateLimiter: lli.rateLimiter,
+			Url:         lli.url,
+			Body:        body,
+			Uri:         lli.URI(),
+			Method:      method,
+			Token:       token,
+			Gzip:        lli.gzip,
+		}
+
+		_, err = client.MakeRequest(context.Background(), cfg)
 		if err != nil {
 			return fmt.Errorf("error while exporting logs : %v", err)
 		}

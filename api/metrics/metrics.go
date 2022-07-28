@@ -10,8 +10,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/logicmonitor/lm-data-sdk-go/internal"
+	"github.com/logicmonitor/lm-data-sdk-go/internal/client"
 	"github.com/logicmonitor/lm-data-sdk-go/model"
+	"github.com/logicmonitor/lm-data-sdk-go/pkg/batch"
+	rateLimiter "github.com/logicmonitor/lm-data-sdk-go/pkg/ratelimiter"
 	"github.com/logicmonitor/lm-data-sdk-go/utils"
 	"github.com/logicmonitor/lm-data-sdk-go/validator"
 )
@@ -36,12 +38,14 @@ var (
 )
 
 type LMMetricIngest struct {
-	client   *http.Client
-	url      string
-	batch    bool
-	interval time.Duration
-	auth     model.AuthProvider
-	gzip     bool
+	client             *http.Client
+	url                string
+	batch              bool
+	interval           time.Duration
+	auth               model.AuthProvider
+	gzip               bool
+	rateLimiterSetting rateLimiter.RateLimiterSetting
+	rateLimiter        rateLimiter.RateLimiter
 }
 
 // NewLMMetricIngest initializes LMMetricIngest
@@ -53,24 +57,30 @@ func NewLMMetricIngest(ctx context.Context, opts ...Option) (*LMMetricIngest, er
 
 	metricsURL, err := utils.URL()
 	if err != nil {
-		return nil, fmt.Errorf("Error in forming Metrics URL: %v", err)
+		return nil, fmt.Errorf("error in forming Metrics URL: %v", err)
 	}
 
 	lmi := LMMetricIngest{
-		client:   &client,
-		url:      metricsURL,
-		batch:    true,
-		interval: defaultBatchingInterval,
-		auth:     model.DefaultAuthenticator{},
-		gzip:     true,
+		client:             &client,
+		url:                metricsURL,
+		batch:              true,
+		interval:           defaultBatchingInterval,
+		auth:               model.DefaultAuthenticator{},
+		gzip:               true,
+		rateLimiterSetting: rateLimiter.RateLimiterSetting{},
 	}
 	for _, opt := range opts {
 		if err := opt(&lmi); err != nil {
 			return nil, err
 		}
 	}
+	lmi.rateLimiter, err = rateLimiter.NewMetricsRateLimiter(lmi.rateLimiterSetting)
+	if err != nil {
+		return nil, err
+	}
+	go lmi.rateLimiter.Run(ctx)
 	if lmi.batch {
-		go internal.CreateAndExportData(&lmi)
+		go batch.CreateAndExportData(&lmi)
 	}
 	return &lmi, nil
 }
@@ -79,7 +89,7 @@ func NewLMMetricIngest(ctx context.Context, opts ...Option) (*LMMetricIngest, er
 func (lmi *LMMetricIngest) SendMetrics(ctx context.Context, rInput model.ResourceInput, dsInput model.DatasourceInput, instInput model.InstanceInput, dpInput model.DataPointInput) error {
 	errorMsg := validator.ValidateAttributes(rInput, dsInput, instInput, dpInput)
 	if errorMsg != "" {
-		return fmt.Errorf("Validation failed : %s", errorMsg)
+		return fmt.Errorf("validation failed : %s", errorMsg)
 	}
 
 	dsInput, instInput, dpInput = setDefaultValues(dsInput, instInput, dpInput)
@@ -95,13 +105,13 @@ func (lmi *LMMetricIngest) SendMetrics(ctx context.Context, rInput model.Resourc
 	} else {
 		payload := createSingleRequestBody(input)
 		singlePayloadBody := append([]model.MetricPayload{}, payload)
-		var payloadList internal.DataPayload
+		var payloadList model.DataPayload
 		if input.Resource.IsCreate {
-			payloadList = internal.DataPayload{
+			payloadList = model.DataPayload{
 				MetricResourceCreateList: singlePayloadBody,
 			}
 		} else {
-			payloadList = internal.DataPayload{
+			payloadList = model.DataPayload{
 				MetricBodyList: singlePayloadBody,
 			}
 		}
@@ -174,7 +184,7 @@ func addRequest(input model.MetricsInput) {
 }
 
 // CreateRequestBody merges the requests present in batching cache and creates metric payload at the end of every batching interval
-func (lmi *LMMetricIngest) CreateRequestBody() internal.DataPayload {
+func (lmi *LMMetricIngest) CreateRequestBody() model.DataPayload {
 	// merge the requests from map
 	resourceMap = make(map[string]model.ResourceInput)
 	dsMap = make(map[string][]model.DatasourceInput)
@@ -184,7 +194,7 @@ func (lmi *LMMetricIngest) CreateRequestBody() internal.DataPayload {
 	metricBatchMutex.Lock()
 	defer metricBatchMutex.Unlock()
 	if len(metricBatch) == 0 {
-		return internal.DataPayload{}
+		return model.DataPayload{}
 	}
 	for _, singleRequest := range metricBatch {
 		if _, ok := resourceMap[singleRequest.Resource.ResourceName]; !ok {
@@ -246,7 +256,7 @@ func (lmi LMMetricIngest) URI() string {
 }
 
 // createRestMetricsPayload prepares metrics payload
-func (lmi *LMMetricIngest) createRestMetricsPayload() internal.DataPayload {
+func (lmi *LMMetricIngest) createRestMetricsPayload() model.DataPayload {
 	var payloadList []model.MetricPayload
 	var payloadListCreateFlag []model.MetricPayload
 	for resName, resDetails := range resourceMap {
@@ -289,7 +299,7 @@ func (lmi *LMMetricIngest) createRestMetricsPayload() internal.DataPayload {
 		}
 	}
 
-	metricPayload := internal.DataPayload{
+	metricPayload := model.DataPayload{
 		MetricBodyList:           payloadList,
 		MetricResourceCreateList: payloadListCreateFlag,
 	}
@@ -301,15 +311,27 @@ func (lmi *LMMetricIngest) createRestMetricsPayload() internal.DataPayload {
 }
 
 // ExportData exports metrics to the LM platform
-func (lmi *LMMetricIngest) ExportData(payloadList internal.DataPayload, uri, method string) error {
+func (lmi *LMMetricIngest) ExportData(payloadList model.DataPayload, uri, method string) error {
+	ctx := context.Background()
 	var errStrings []string
+
+	cfg := client.RequestConfig{
+		Client:      lmi.client,
+		Url:         lmi.url,
+		Uri:         uri,
+		Method:      method,
+		Gzip:        lmi.gzip,
+		RateLimiter: lmi.rateLimiter,
+	}
+
 	if method == http.MethodPatch || method == http.MethodPut {
 		payloadBody, err := json.Marshal(payloadList.UpdatePropertiesBody)
 		if err != nil {
 			errStrings = append(errStrings, "error in marshaling update property metric payload: "+err.Error())
 		}
-		token := lmi.auth.GetCredentials(method, uri, payloadBody)
-		_, err = internal.MakeRequest(lmi.client, lmi.url, payloadBody, uri, method, token, lmi.gzip)
+		cfg.Token = lmi.auth.GetCredentials(method, uri, payloadBody)
+		cfg.Body = payloadBody
+		_, err = client.MakeRequest(ctx, cfg)
 		if err != nil {
 			errStrings = append(errStrings, "error in updating properties: "+err.Error())
 		}
@@ -319,8 +341,9 @@ func (lmi *LMMetricIngest) ExportData(payloadList internal.DataPayload, uri, met
 		if err != nil {
 			errStrings = append(errStrings, "error in marshaling metric payload: "+err.Error())
 		}
-		token := lmi.auth.GetCredentials(method, uri, payloadBody)
-		_, err = internal.MakeRequest(lmi.client, lmi.url, payloadBody, uri, method, token, lmi.gzip)
+		cfg.Token = lmi.auth.GetCredentials(method, uri, payloadBody)
+		cfg.Body = payloadBody
+		_, err = client.MakeRequest(ctx, cfg)
 		if err != nil {
 			errStrings = append(errStrings, "error while exporting metrics: "+err.Error())
 		}
@@ -331,8 +354,10 @@ func (lmi *LMMetricIngest) ExportData(payloadList internal.DataPayload, uri, met
 		if err != nil {
 			errStrings = append(errStrings, "error in marshaling metric payload with create flag: "+err.Error())
 		}
-		token := lmi.auth.GetCredentials(method, uri, payloadBody)
-		_, err = internal.MakeRequest(lmi.client, lmi.url, payloadBody, metricURI, method, token, lmi.gzip)
+		cfg.Token = lmi.auth.GetCredentials(method, uri, payloadBody)
+		cfg.Body = payloadBody
+		cfg.Uri = metricURI
+		_, err = client.MakeRequest(ctx, cfg)
 		if err != nil {
 			errStrings = append(errStrings, "error while exporting metrics with create flag : "+err.Error())
 		}
@@ -365,7 +390,7 @@ func (lmi *LMMetricIngest) UpdateResourceProperties(resName string, resIDs, resP
 		method = http.MethodPatch
 	}
 
-	updateResPropBody := internal.DataPayload{
+	updateResPropBody := model.DataPayload{
 		UpdatePropertiesBody: updateResProp,
 	}
 	return lmi.ExportData(updateResPropBody, updateResPropURI, method)
@@ -383,7 +408,7 @@ func (lmi *LMMetricIngest) UpdateInstanceProperties(resIDs, insProps map[string]
 	errorMsg += validator.CheckDSDisplayNameValidation(dsDisplayName)
 
 	if errorMsg != "" {
-		return fmt.Errorf("Validation failed: %v", errorMsg)
+		return fmt.Errorf("validation failed: %v", errorMsg)
 	}
 
 	method := http.MethodPut
@@ -397,9 +422,8 @@ func (lmi *LMMetricIngest) UpdateInstanceProperties(resIDs, insProps map[string]
 		InstanceName:          insName,
 		InstanceProperties:    insProps,
 	}
-	updateInsPropBody := internal.DataPayload{
+	updateInsPropBody := model.DataPayload{
 		UpdatePropertiesBody: updateInsProp,
 	}
 	return lmi.ExportData(updateInsPropBody, updateInsPropURI, method)
-
 }
