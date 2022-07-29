@@ -40,3 +40,11 @@ func WithGzipCompression(gzip bool) Option {
 		return nil
 	}
 }
+
+// WithRateLimit is used to limit the metric request count per minute
+func WithRateLimit(requestCount int) Option {
+	return func(lmi *LMMetricIngest) error {
+		lmi.rateLimiterSetting.RequestCount = requestCount
+		return nil
+	}
+}

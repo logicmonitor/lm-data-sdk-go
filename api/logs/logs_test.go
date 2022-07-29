@@ -3,6 +3,7 @@ package logs
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/logicmonitor/lm-data-sdk-go/model"
+	rateLimiter "github.com/logicmonitor/lm-data-sdk-go/pkg/ratelimiter"
 	"github.com/logicmonitor/lm-data-sdk-go/utils"
 )
 
@@ -49,8 +51,10 @@ func TestNewLMLogIngest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			setEnv()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
 
-			lli, err := NewLMLogIngest(context.Background(), tt.args.option...)
+			lli, err := NewLMLogIngest(ctx, tt.args.option...)
 			if err != nil {
 				t.Errorf("NewLMLogIngest() error = %v", err)
 				return
@@ -109,12 +113,13 @@ func TestSendLogs(t *testing.T) {
 	}
 
 	t.Run(test.name, func(t *testing.T) {
-
 		setEnv()
+		rateLimiter, _ := rateLimiter.NewLogRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 100})
 		e := &LMLogIngest{
-			client: test.fields.client,
-			url:    test.fields.url,
-			auth:   test.fields.auth,
+			client:      test.fields.client,
+			url:         test.fields.url,
+			auth:        test.fields.auth,
+			rateLimiter: rateLimiter,
 		}
 		err := e.SendLogs(context.Background(), test.args.log, test.args.resourceId, test.args.metadata)
 		if err != nil {
@@ -167,12 +172,13 @@ func TestSendLogsError(t *testing.T) {
 	}
 
 	t.Run(test.name, func(t *testing.T) {
-
 		setEnv()
+		rateLimiter, _ := rateLimiter.NewLogRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 100})
 		e := &LMLogIngest{
-			client: test.fields.client,
-			url:    test.fields.url,
-			auth:   test.fields.auth,
+			client:      test.fields.client,
+			url:         test.fields.url,
+			auth:        test.fields.auth,
+			rateLimiter: rateLimiter,
 		}
 		err := e.SendLogs(context.Background(), test.args.log, test.args.resourceId, test.args.metadata)
 		if err == nil {
@@ -224,14 +230,15 @@ func TestSendLogsBatch(t *testing.T) {
 	}
 
 	t.Run(test.name, func(t *testing.T) {
-
 		setLMEnv()
+		rateLimiter, _ := rateLimiter.NewLogRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 100})
 		e := &LMLogIngest{
-			client:   test.fields.client,
-			url:      test.fields.url,
-			auth:     test.fields.auth,
-			batch:    true,
-			interval: 1 * time.Second,
+			client:      test.fields.client,
+			url:         test.fields.url,
+			auth:        test.fields.auth,
+			batch:       true,
+			interval:    1 * time.Second,
+			rateLimiter: rateLimiter,
 		}
 		err := e.SendLogs(context.Background(), test.args.log, test.args.resourceId, test.args.metadata)
 		if err != nil {
@@ -320,4 +327,63 @@ func cleanupLMEnv() {
 	os.Unsetenv("LOGICMONITOR_ACCOUNT")
 	os.Unsetenv("LOGICMONITOR_ACCESS_ID")
 	os.Unsetenv("LOGICMONITOR_ACCESS_KEY")
+}
+
+func BenchmarkSendLogs(b *testing.B) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		response := utils.Response{
+			Success: true,
+			Message: "Logs exported successfully!!",
+		}
+		body, _ := json.Marshal(response)
+		time.Sleep(10 * time.Millisecond)
+		w.Write(body)
+	}))
+
+	type args struct {
+		log        string
+		resourceId map[string]string
+		metadata   map[string]string
+	}
+
+	type fields struct {
+		client *http.Client
+		url    string
+		auth   model.AuthProvider
+	}
+
+	test := struct {
+		name   string
+		fields fields
+		args   args
+	}{
+		name: "Test log export without batching",
+		fields: fields{
+			client: ts.Client(),
+			url:    ts.URL,
+			auth:   model.DefaultAuthenticator{},
+		},
+		args: args{
+			log:        "This is test message",
+			resourceId: map[string]string{"test": "resource"},
+			metadata:   map[string]string{"test": "metadata"},
+		},
+	}
+	setEnv()
+	defer cleanupEnv()
+
+	for i := 0; i < b.N; i++ {
+		rateLimiter, _ := rateLimiter.NewLogRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 350})
+		e := &LMLogIngest{
+			client:      test.fields.client,
+			url:         test.fields.url,
+			auth:        test.fields.auth,
+			rateLimiter: rateLimiter,
+		}
+		err := e.SendLogs(context.Background(), test.args.log, test.args.resourceId, test.args.metadata)
+		if err != nil {
+			fmt.Print(err)
+			return
+		}
+	}
 }

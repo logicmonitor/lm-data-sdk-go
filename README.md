@@ -23,8 +23,18 @@ All properties can be set using environment variable.
 |   LM_BEARER_TOKEN    |	BearerToken while using Bearer authentication.|
 
 ### Metrics Ingestion:
-For metrics ingestion, user must create an object of ResourceInput, DataSourceInput, InstanceInput and DataPointInput by passing relevant metric and attribute values to the struct fields using package `github.com/logicmonitor/lm-data-sdk-go/model`.
-Initialize metric ingest by calling NewLMMetricIngest. If user wants to enable batching, pass an option `WithMetricBatchingEnabled(batchinterval)` to NewLMMetricIngest() function call.
+For metrics ingestion, user must create an object of `ResourceInput`, `DataSourceInput`, `InstanceInput` and `DataPointInput` by passing relevant metric and attribute values to the struct fields using package `github.com/logicmonitor/lm-data-sdk-go/model`.
+
+Initialize metric ingest by calling `NewLMMetricIngest`. 
+
+#### Options:
+
+- If user wants to enable batching, user can pass an option `WithMetricBatchingEnabled(batchinterval)` to NewLMMetricIngest() function call.
+
+- Number of requests for metrics per minute can be controlled using `WithRateLimit(requestCount int)`.
+
+#### Example:
+
 For exporting metrics to LM platform, call SendMetrics by passing all the attributes as input parameters.
 
     // fill the values
@@ -64,8 +74,17 @@ For exporting metrics to LM platform, call SendMetrics by passing all the attrib
 
 ### Logs Ingestion
 
-Initialize log ingest by calling NewLMLogIngest. If user wants to enable batching, pass an option `WithLogBatchingEnabled(batchinterval)` to NewLMLogIngest() function call.
-For exporting logs to LM platform, call SendLogs by passing `log message`, `resource ID` and `metadatamap` as input parameters.
+Initialize log ingest by calling `NewLMLogIngest`. 
+
+#### Options:
+
+- If user wants to enable batching, pass an option `WithLogBatchingEnabled(batchinterval)` to NewLMLogIngest() function call.
+
+- Number of requests for logs per minute can be controlled using `WithRateLimit(requestCount int)`
+
+#### Example:
+
+For exporting logs to LM platform, call SendLogs by passing `log message`, `resource ID` and `metadata map` as input parameters.
 
 ```
 var options []logs.Option
