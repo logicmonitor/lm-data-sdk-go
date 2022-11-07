@@ -1,6 +1,6 @@
-# LogicMonitor Golang Data SDK
+# LogicMonitor Go Data SDK
 
-LogicMonitor Golang Data SDK is suitable for ingesting the metrics and logs into the LogicMonitor Platform.
+LogicMonitor Go Data SDK is suitable for ingesting the metrics and logs into the LogicMonitor Platform.
 
 ## Overview
 LogicMonitor's Push Metrics feature allows you to send metrics directly to the LogicMonitor platform via a dedicated API, removing the need to route the data through a LogicMonitor Collector. Once ingested, these metrics are presented alongside all other metrics gathered via LogicMonitor, providing a single pane of glass for metric monitoring and alerting.
