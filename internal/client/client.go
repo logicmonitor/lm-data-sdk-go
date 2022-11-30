@@ -19,6 +19,7 @@ type RequestConfig struct {
 	Method      string
 	Token       string
 	Gzip        bool
+	Headers     map[string]string
 }
 
 // MakeRequest compresses the payload and exports it to LM Platform
@@ -48,6 +49,10 @@ func MakeRequest(_ context.Context, reqConfig RequestConfig) (*utils.Response, e
 
 	if reqConfig.Gzip {
 		req.Header.Add("Content-Encoding", "gzip")
+	}
+
+	for key, value := range reqConfig.Headers {
+		req.Header.Set(key, value)
 	}
 
 	if acquire, err := reqConfig.RateLimiter.Acquire(); !acquire {

@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 )
 
-//Response will contain variable for responses from logingest
+// Response will contain variable for responses from logingest
 type Response struct {
 	Success   bool                     `json:"success"`
 	Message   string                   `json:"message"`
@@ -23,15 +23,14 @@ func ConvertHTTPToIngestResponse(resp *http.Response) (*Response, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	_ = resp.Body.Close()
 
-	err = json.Unmarshal(body, ingestResponse)
-	if err != nil {
-		ingestResponse.Success = false
-		return ingestResponse, fmt.Errorf("Invalid Response! , Status Code: %d , Error Message: %s", resp.StatusCode, string(body[:]))
-	}
 	if !(resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusAccepted) {
+		err = json.Unmarshal(body, ingestResponse)
+		if err != nil {
+			ingestResponse.Success = false
+			return ingestResponse, fmt.Errorf("Invalid Response! , Status Code: %d , Error Message: %s", resp.StatusCode, string(body[:]))
+		}
 		errMsg := ""
 		if resp.StatusCode == http.StatusMultiStatus {
 			for _, responseError := range ingestResponse.Errors {
