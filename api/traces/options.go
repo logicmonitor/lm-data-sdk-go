@@ -1,6 +1,7 @@
 package traces
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/logicmonitor/lm-data-sdk-go/model"
@@ -45,6 +46,14 @@ func WithGzipCompression(gzip bool) Option {
 func WithRateLimit(requestCount int) Option {
 	return func(lti *LMTraceIngest) error {
 		lti.rateLimiterSetting.RequestCount = requestCount
+		return nil
+	}
+}
+
+// WithHTTPClient is used to set HTTP client
+func WithHTTPClient(client *http.Client) Option {
+	return func(lti *LMTraceIngest) error {
+		lti.client = client
 		return nil
 	}
 }

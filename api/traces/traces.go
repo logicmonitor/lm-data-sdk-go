@@ -28,7 +28,7 @@ type LMTraceIngest struct {
 	rateLimiter        rateLimiter.RateLimiter
 }
 
-// NewLMLogIngest initializes LMLogIngest
+// NewLMTraceIngest initializes LMTraceIngest
 func NewLMTraceIngest(ctx context.Context, opts ...Option) (*LMTraceIngest, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: false, MinVersion: tls.VersionTLS12}
@@ -54,6 +54,12 @@ func NewLMTraceIngest(ctx context.Context, opts ...Option) (*LMTraceIngest, erro
 			return nil, err
 		}
 	}
+
+	lti.rateLimiter, err = rateLimiter.NewTraceRateLimiter(lti.rateLimiterSetting)
+	if err != nil {
+		return nil, err
+	}
+
 	if lti.batch {
 		go batch.CreateAndExportData(&lti)
 	}
@@ -99,7 +105,7 @@ func (lti *LMTraceIngest) CreateRequestBody() model.DataPayload {
 	return model.DataPayload{}
 }
 
-// ExportData exports logs to the LM platform
+// ExportData exports trace to the LM platform
 func (lti *LMTraceIngest) ExportData(payloadList model.DataPayload, uri, method string) error {
 	return nil
 }
