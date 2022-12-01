@@ -57,3 +57,11 @@ func WithHTTPClient(client *http.Client) Option {
 		return nil
 	}
 }
+
+// WithEndpoint is used to set Endpoint URL to export traces
+func WithEndpoint(endpoint string) Option {
+	return func(lti *LMTraceIngest) error {
+		lti.url = endpoint
+		return nil
+	}
+}
