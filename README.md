@@ -10,17 +10,24 @@ Similarly, If a log integration isn’t available or you have custom logs that y
 ## Quick Start Notes:
 
 ### Set Configurations
-While using LMv1 authentication set LM_ACCESS_ID and LM_ACCESS_KEY properties.
-In case of BearerToken authentication set LM_BEARER_TOKEN property. 
-Company's name or Account name must be passed to LM_ACCOUNT property. 
+While using LMv1 authentication set LOGICMONITOR_ACCESS_ID and LOGICMONITOR_ACCESS_KEY properties.
+In case of BearerToken authentication set LOGICMONITOR_BEARER_TOKEN property. 
+Company's name or Account name must be passed to LOGICMONITOR_ACCOUNT property. 
 All properties can be set using environment variable.
 
 | Environment variable |	Description |
 | -------------------- |:--------------:|
-|   LM_ACCOUNT         |	Account name (Company Name) is your organization name |
-|   LM_ACCESS_ID       |	Access id while using LMv1 authentication.|
-|   LM_ACCESS_KEY      |	Access key while using LMv1 authentication.|
-|   LM_BEARER_TOKEN    |	BearerToken while using Bearer authentication.|
+|   LOGICMONITOR_ACCOUNT         |	Account name (Company Name) is your organization name |
+|   LOGICMONITOR_ACCESS_ID       |	Access id while using LMv1 authentication.|
+|   LOGICMONITOR_ACCESS_KEY      |	Access key while using LMv1 authentication.|
+|   LOGICMONITOR_BEARER_TOKEN    |	BearerToken while using Bearer authentication.|
+
+#### Default values
+
+- Batching is enabled with default time interval as 10s.
+- Gzip compression of payload is enabled.
+- URL will be set to `https://${LOGICMONITOR_ACCOUNT}.logicmonitor.com/rest` followed by uri path (for logs: /log/ingest and for metrics: /v2/metric/ingest)
+- Default http client will have timeout of 5s.
 
 ### Metrics Ingestion:
 For metrics ingestion, user must create an object of `ResourceInput`, `DataSourceInput`, `InstanceInput` and `DataPointInput` by passing relevant metric and attribute values to the struct fields using package `github.com/logicmonitor/lm-data-sdk-go/model`.
@@ -29,9 +36,19 @@ Initialize metric ingest by calling `NewLMMetricIngest`.
 
 #### Options:
 
-- If user wants to enable batching, user can pass an option `WithMetricBatchingEnabled(batchinterval)` to NewLMMetricIngest() function call.
+- To change batching interval of metrics, user can pass an option `WithMetricBatchingInterval(batchinterval string)`.
+
+- To disable batching of metrics, user can pass an option `WithMetricBatchingDisabled()`.
+
+- To pass authentication parameters, user can pass an option `WithAuthentication(authParams utils.AuthParams)`.
+
+- To enable/disable gzip compression of metric payload, user can pass an option `WithGzipCompression(gzip bool)`.
 
 - Number of requests for metrics per minute can be controlled using `WithRateLimit(requestCount int)`.
+
+- To change settings of default HTTP client, user can pass an option `WithHTTPClient(client *http.Client)`
+
+- Endpoint URL to which metrics will be exported can be changed by `WithEndpoint(endpoint string)` 
 
 #### Example:
 
@@ -62,7 +79,7 @@ For exporting metrics to LM platform, call SendMetrics by passing all the attrib
 	}
 
 	options := []metrics.Option{
-		metrics.WithMetricBatchingEnabled(3 * time.Second),
+		metrics.WithMetricBatchingInterval(3 * time.Second),
 	}
 
 	lmMetric, err := metrics.NewLMMetricIngest(context.Background(), options...)
@@ -78,9 +95,19 @@ Initialize log ingest by calling `NewLMLogIngest`.
 
 #### Options:
 
-- If user wants to enable batching, pass an option `WithLogBatchingEnabled(batchinterval)` to NewLMLogIngest() function call.
+- To change batching interval of logs, user can pass an option `WithLogBatchingInterval(batchinterval string)`
+
+- To disable batching of logs, user can pass an option `WithLogBatchingDisabled()`
+
+- To pass authentication parameters, user can pass an option `WithAuthentication(authParams utils.AuthParams)`
+
+- To enable/disable gzip compression of log payload, user can pass an option `WithGzipCompression(gzip bool)`
 
 - Number of requests for logs per minute can be controlled using `WithRateLimit(requestCount int)`
+
+- To change settings of default HTTP client, user can pass an option `WithHTTPClient(client *http.Client)`
+
+- Endpoint URL to which logs will be exported, can be changed by `WithEndpoint(endpoint string)` 
 
 #### Example:
 
@@ -89,7 +116,7 @@ For exporting logs to LM platform, call SendLogs by passing `log message`, `reso
 ```
 var options []logs.Option
 options = []logs.Option{
-	logs.WithLogBatchingEnabled(3 * time.Second),
+	logs.WithLogBatchingInterval(3 * time.Second),
 }
 
 lmLog, err := logs.NewLMLogIngest(context.Background(), options...)

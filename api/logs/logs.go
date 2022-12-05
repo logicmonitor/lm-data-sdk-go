@@ -35,7 +35,7 @@ type LMLogIngest struct {
 	url                string
 	batch              bool
 	interval           time.Duration
-	auth               model.AuthProvider
+	auth               utils.AuthParams
 	gzip               bool
 	rateLimiterSetting rateLimiter.RateLimiterSetting
 	rateLimiter        rateLimiter.RateLimiter
@@ -48,16 +48,11 @@ func NewLMLogIngest(ctx context.Context, opts ...Option) (*LMLogIngest, error) {
 	clientTransport := (http.RoundTripper)(transport)
 	client := http.Client{Transport: clientTransport, Timeout: 5 * time.Second}
 
-	logsURL, err := utils.URL()
-	if err != nil {
-		return nil, fmt.Errorf("error in forming Logs URL: %v", err)
-	}
 	lli := LMLogIngest{
 		client:             &client,
-		url:                logsURL,
 		batch:              true,
 		interval:           defaultBatchingInterval,
-		auth:               model.DefaultAuthenticator{},
+		auth:               utils.AuthParams{},
 		gzip:               true,
 		rateLimiterSetting: rateLimiter.RateLimiterSetting{},
 	}
@@ -67,6 +62,16 @@ func NewLMLogIngest(ctx context.Context, opts ...Option) (*LMLogIngest, error) {
 			return nil, err
 		}
 	}
+
+	var err error
+	if lli.url == "" {
+		logsURL, err := utils.URL()
+		if err != nil {
+			return nil, fmt.Errorf("error in forming Logs URL: %v", err)
+		}
+		lli.url = logsURL
+	}
+
 	lli.rateLimiter, err = rateLimiter.NewLogRateLimiter(lli.rateLimiterSetting)
 	if err != nil {
 		return nil, err

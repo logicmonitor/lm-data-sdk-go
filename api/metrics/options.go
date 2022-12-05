@@ -1,14 +1,15 @@
 package metrics
 
 import (
+	"net/http"
 	"time"
 
-	"github.com/logicmonitor/lm-data-sdk-go/model"
+	"github.com/logicmonitor/lm-data-sdk-go/utils"
 )
 
 type Option func(*LMMetricIngest) error
 
-// WithMetricBatchingEnabled is used for passing batch time interval.
+// WithMetricBatchingInterval is used for passing batch time interval.
 func WithMetricBatchingInterval(batchingInterval time.Duration) Option {
 	return func(lmi *LMMetricIngest) error {
 		lmi.interval = batchingInterval
@@ -25,9 +26,9 @@ func WithMetricBatchingDisabled() Option {
 }
 
 // WithAuthentication is used for passing authentication token if not set in environment variables.
-func WithAuthentication(authProvider model.AuthProvider) Option {
+func WithAuthentication(authParams utils.AuthParams) Option {
 	return func(lmi *LMMetricIngest) error {
-		lmi.auth = authProvider
+		lmi.auth = authParams
 		return nil
 	}
 }
@@ -45,6 +46,22 @@ func WithGzipCompression(gzip bool) Option {
 func WithRateLimit(requestCount int) Option {
 	return func(lmi *LMMetricIngest) error {
 		lmi.rateLimiterSetting.RequestCount = requestCount
+		return nil
+	}
+}
+
+// WithHTTPClient is used to set HTTP client
+func WithHTTPClient(client *http.Client) Option {
+	return func(lmi *LMMetricIngest) error {
+		lmi.client = client
+		return nil
+	}
+}
+
+// WithEndpoint is used to set Endpoint URL to export logs
+func WithEndpoint(endpoint string) Option {
+	return func(lmi *LMMetricIngest) error {
+		lmi.url = endpoint
 		return nil
 	}
 }

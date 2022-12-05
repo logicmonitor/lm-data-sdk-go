@@ -42,7 +42,7 @@ type LMMetricIngest struct {
 	url                string
 	batch              bool
 	interval           time.Duration
-	auth               model.AuthProvider
+	auth               utils.AuthParams
 	gzip               bool
 	rateLimiterSetting rateLimiter.RateLimiterSetting
 	rateLimiter        rateLimiter.RateLimiter
@@ -55,17 +55,11 @@ func NewLMMetricIngest(ctx context.Context, opts ...Option) (*LMMetricIngest, er
 	clientTransport := (http.RoundTripper)(transport)
 	client := http.Client{Transport: clientTransport, Timeout: 5 * time.Second}
 
-	metricsURL, err := utils.URL()
-	if err != nil {
-		return nil, fmt.Errorf("error in forming Metrics URL: %v", err)
-	}
-
 	lmi := LMMetricIngest{
 		client:             &client,
-		url:                metricsURL,
 		batch:              true,
 		interval:           defaultBatchingInterval,
-		auth:               model.DefaultAuthenticator{},
+		auth:               utils.AuthParams{},
 		gzip:               true,
 		rateLimiterSetting: rateLimiter.RateLimiterSetting{},
 	}
@@ -74,6 +68,16 @@ func NewLMMetricIngest(ctx context.Context, opts ...Option) (*LMMetricIngest, er
 			return nil, err
 		}
 	}
+
+	var err error
+	if lmi.url == "" {
+		metricsURL, err := utils.URL()
+		if err != nil {
+			return nil, fmt.Errorf("error in forming Metrics URL: %v", err)
+		}
+		lmi.url = metricsURL
+	}
+
 	lmi.rateLimiter, err = rateLimiter.NewMetricsRateLimiter(lmi.rateLimiterSetting)
 	if err != nil {
 		return nil, err

@@ -50,7 +50,7 @@ func TestNewLMLogIngest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			setEnv()
+			setLMEnv()
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
@@ -69,7 +69,7 @@ func TestNewLMLogIngest(t *testing.T) {
 			}
 		})
 	}
-	cleanupEnv()
+	cleanupLMEnv()
 }
 
 func TestSendLogs(t *testing.T) {
@@ -91,7 +91,7 @@ func TestSendLogs(t *testing.T) {
 	type fields struct {
 		client *http.Client
 		url    string
-		auth   model.AuthProvider
+		auth   utils.AuthParams
 	}
 
 	test := struct {
@@ -103,7 +103,7 @@ func TestSendLogs(t *testing.T) {
 		fields: fields{
 			client: ts.Client(),
 			url:    ts.URL,
-			auth:   model.DefaultAuthenticator{},
+			auth:   utils.AuthParams{},
 		},
 		args: args{
 			log:        "This is test message",
@@ -113,7 +113,7 @@ func TestSendLogs(t *testing.T) {
 	}
 
 	t.Run(test.name, func(t *testing.T) {
-		setEnv()
+		setLMEnv()
 		rateLimiter, _ := rateLimiter.NewLogRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 100})
 		e := &LMLogIngest{
 			client:      test.fields.client,
@@ -127,7 +127,7 @@ func TestSendLogs(t *testing.T) {
 			return
 		}
 	})
-	cleanupEnv()
+	cleanupLMEnv()
 }
 
 func TestSendLogsError(t *testing.T) {
@@ -150,7 +150,7 @@ func TestSendLogsError(t *testing.T) {
 	type fields struct {
 		client *http.Client
 		url    string
-		auth   model.AuthProvider
+		auth   utils.AuthParams
 	}
 
 	test := struct {
@@ -162,7 +162,7 @@ func TestSendLogsError(t *testing.T) {
 		fields: fields{
 			client: ts.Client(),
 			url:    ts.URL,
-			auth:   model.DefaultAuthenticator{},
+			auth:   utils.AuthParams{},
 		},
 		args: args{
 			log:        "This is test message",
@@ -172,7 +172,7 @@ func TestSendLogsError(t *testing.T) {
 	}
 
 	t.Run(test.name, func(t *testing.T) {
-		setEnv()
+		setLMEnv()
 		rateLimiter, _ := rateLimiter.NewLogRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 100})
 		e := &LMLogIngest{
 			client:      test.fields.client,
@@ -186,7 +186,7 @@ func TestSendLogsError(t *testing.T) {
 			return
 		}
 	})
-	cleanupEnv()
+	cleanupLMEnv()
 }
 
 func TestSendLogsBatch(t *testing.T) {
@@ -208,7 +208,7 @@ func TestSendLogsBatch(t *testing.T) {
 	type fields struct {
 		client *http.Client
 		url    string
-		auth   model.AuthProvider
+		auth   utils.AuthParams
 	}
 
 	test := struct {
@@ -220,7 +220,7 @@ func TestSendLogsBatch(t *testing.T) {
 		fields: fields{
 			client: ts.Client(),
 			url:    ts.URL,
-			auth:   model.DefaultAuthenticator{},
+			auth:   utils.AuthParams{},
 		},
 		args: args{
 			log:        "This is test batch message",
@@ -307,22 +307,12 @@ func TestCreateRestLogsBody(t *testing.T) {
 	}
 }
 
-func setEnv() {
-	os.Setenv("LM_ACCOUNT", "testenv")
-	os.Setenv("LM_ACCESS_ID", "weryuifsjkf")
-	os.Setenv("LM_ACCESS_KEY", "@dfsd4FDf999999FDE")
-}
 func setLMEnv() {
 	os.Setenv("LOGICMONITOR_ACCOUNT", "testenv")
 	os.Setenv("LOGICMONITOR_ACCESS_ID", "weryuifsjkf")
 	os.Setenv("LOGICMONITOR_ACCESS_KEY", "@dfsd4FDf999999FDE")
 }
 
-func cleanupEnv() {
-	os.Unsetenv("LM_ACCOUNT")
-	os.Unsetenv("LM_ACCESS_ID")
-	os.Unsetenv("LM_ACCESS_KEY")
-}
 func cleanupLMEnv() {
 	os.Unsetenv("LOGICMONITOR_ACCOUNT")
 	os.Unsetenv("LOGICMONITOR_ACCESS_ID")
@@ -349,7 +339,7 @@ func BenchmarkSendLogs(b *testing.B) {
 	type fields struct {
 		client *http.Client
 		url    string
-		auth   model.AuthProvider
+		auth   utils.AuthParams
 	}
 
 	test := struct {
@@ -361,7 +351,7 @@ func BenchmarkSendLogs(b *testing.B) {
 		fields: fields{
 			client: ts.Client(),
 			url:    ts.URL,
-			auth:   model.DefaultAuthenticator{},
+			auth:   utils.AuthParams{},
 		},
 		args: args{
 			log:        "This is test message",
@@ -369,8 +359,8 @@ func BenchmarkSendLogs(b *testing.B) {
 			metadata:   map[string]string{"test": "metadata"},
 		},
 	}
-	setEnv()
-	defer cleanupEnv()
+	setLMEnv()
+	defer cleanupLMEnv()
 
 	for i := 0; i < b.N; i++ {
 		rateLimiter, _ := rateLimiter.NewLogRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 350})
