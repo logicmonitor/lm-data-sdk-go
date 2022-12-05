@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/logicmonitor/lm-data-sdk-go/model"
+	"github.com/logicmonitor/lm-data-sdk-go/utils"
 )
 
 type Option func(*LMLogIngest) error
@@ -26,9 +26,9 @@ func WithLogBatchingDisabled() Option {
 }
 
 // WithAuthentication is used for passing authentication token if not set in environment variables.
-func WithAuthentication(authProvider model.AuthProvider) Option {
+func WithAuthentication(authParams utils.AuthParams) Option {
 	return func(lli *LMLogIngest) error {
-		lli.auth = authProvider
+		lli.auth = authParams
 		return nil
 	}
 }

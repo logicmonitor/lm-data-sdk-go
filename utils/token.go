@@ -23,16 +23,23 @@ type Lmv1Token struct {
 	Epoch     time.Time
 }
 
-func GetToken(method, resourcePath string, body []byte) string {
-	accessID := os.Getenv("LM_ACCESS_ID")
+type AuthParams struct {
+	AccessID             string
+	AccessKey            string
+	BearerToken          string
+	CollectorCredentials string
+}
+
+func (ap AuthParams) GetCredentials(method, resourcePath string, body []byte) string {
+	accessID := ap.AccessID
 	if accessID == "" {
 		accessID = os.Getenv("LOGICMONITOR_ACCESS_ID")
 	}
-	accessKey := os.Getenv("LM_ACCESS_KEY")
+	accessKey := ap.AccessKey
 	if accessKey == "" {
 		accessKey = os.Getenv("LOGICMONITOR_ACCESS_KEY")
 	}
-	bearerToken := os.Getenv("LM_BEARER_TOKEN")
+	bearerToken := ap.BearerToken
 	if bearerToken == "" {
 		bearerToken = os.Getenv("LOGICMONITOR_BEARER_TOKEN")
 	}
@@ -40,6 +47,8 @@ func GetToken(method, resourcePath string, body []byte) string {
 		return generateLMv1Token(method, accessID, accessKey, body, resourcePath).String()
 	} else if bearerToken != "" {
 		return "Bearer " + bearerToken
+	} else if ap.CollectorCredentials != "" {
+		return ap.CollectorCredentials
 	}
 	return ""
 }
@@ -61,7 +70,7 @@ func (t *Lmv1Token) String() string {
 	return builder.String()
 }
 
-//generateLMv1Token generate LMv1Token
+// generateLMv1Token generate LMv1Token
 func generateLMv1Token(method string, accessID string, accessKey string, body []byte, resourcePath string) *Lmv1Token {
 
 	epochTime := time.Now()
