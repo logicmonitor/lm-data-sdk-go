@@ -111,7 +111,9 @@ Initialize log ingest by calling `NewLMLogIngest`.
 
 #### Example:
 
-For exporting logs to LM platform, call SendLogs by passing `log message`, `resource ID` and `metadata map` as input parameters.
+For exporting logs to LM platform, 
+1. Convert data into LM Log format by calling `ConvertToLMLogInput(logMessage, timestamp string, resourceidMap, metadata map[string]string)`. 
+2. Invoke `SendLogs(ctx context.Context, logPayload model.LogInput)` by passing constucted LMLogInput as an input parameter.
 
 ```
 var options []logs.Option
@@ -119,12 +121,16 @@ options = []logs.Option{
 	logs.WithLogBatchingInterval(3 * time.Second),
 }
 
-lmLog, err := logs.NewLMLogIngest(context.Background(), options...)
+lmLogClient, err := logs.NewLMLogIngest(context.Background(), options...)
 if err != nil {
 	fmt.Println("Error in initilaizing log ingest ", err)
 	return
 }
-lmLog.SendLogs(logstr, map[string]string{"system.displayname": "device-name-test"}, map[string]string{"testkey": "testvalue"})
+payload := translator.ConvertToLMLogInput(log.Body().Str(), timestampFromLogRecord(log).String(), resourceMapperMap, logMetadataMap)
+err := lmLogClient.SendLogs(ctx, payload)
+if err != nil {
+	log.Error("error while exporting logs ", err)
+}
 ```
 
 Read the Library Documentation to use Metrics/Logs ingestion API.
