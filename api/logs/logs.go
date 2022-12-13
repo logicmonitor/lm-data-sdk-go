@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 	"sync"
 	"time"
 
@@ -84,24 +83,16 @@ func NewLMLogIngest(ctx context.Context, opts ...Option) (*LMLogIngest, error) {
 }
 
 // SendLogs is the entry point for receiving log data
-func (lli *LMLogIngest) SendLogs(ctx context.Context, logMessage string, resourceidMap, metadata map[string]string) error {
-	timestamp := strconv.Itoa(int(time.Now().Unix()))
-	logsV1 := model.LogInput{
-		Message:    logMessage,
-		ResourceID: resourceidMap,
-		Metadata:   metadata,
-		Timestamp:  timestamp,
-	}
-
+func (lli *LMLogIngest) SendLogs(ctx context.Context, logPayload model.LogInput) error {
 	if lli.batch {
-		addRequest(logsV1)
+		addRequest(logPayload)
 	} else {
 		var body model.LogPayload
 		body = make(map[string]interface{}, 0)
-		body[message] = logMessage
-		body[resourceID] = resourceidMap
-		body[timestampKey] = timestamp
-		for k, v := range metadata {
+		body[message] = logPayload.Message
+		body[resourceID] = logPayload.ResourceID
+		body[timestampKey] = logPayload.Timestamp
+		for k, v := range logPayload.Metadata {
 			body[k] = v
 		}
 
