@@ -13,6 +13,7 @@ import (
 	"github.com/logicmonitor/lm-data-sdk-go/model"
 	rateLimiter "github.com/logicmonitor/lm-data-sdk-go/pkg/ratelimiter"
 	"github.com/logicmonitor/lm-data-sdk-go/utils"
+	"github.com/logicmonitor/lm-data-sdk-go/utils/translator"
 )
 
 func TestNewLMLogIngest(t *testing.T) {
@@ -84,8 +85,8 @@ func TestSendLogs(t *testing.T) {
 
 	type args struct {
 		log        string
-		resourceId map[string]string
-		metadata   map[string]string
+		resourceId map[string]interface{}
+		metadata   map[string]interface{}
 	}
 
 	type fields struct {
@@ -107,8 +108,8 @@ func TestSendLogs(t *testing.T) {
 		},
 		args: args{
 			log:        "This is test message",
-			resourceId: map[string]string{"test": "resource"},
-			metadata:   map[string]string{"test": "metadata"},
+			resourceId: map[string]interface{}{"test": "resource"},
+			metadata:   map[string]interface{}{"test": "metadata"},
 		},
 	}
 
@@ -121,7 +122,8 @@ func TestSendLogs(t *testing.T) {
 			auth:        test.fields.auth,
 			rateLimiter: rateLimiter,
 		}
-		err := e.SendLogs(context.Background(), test.args.log, test.args.resourceId, test.args.metadata)
+		payload := translator.ConvertToLMLogInput(test.args.log, time.Now().String(), test.args.resourceId, test.args.metadata)
+		err := e.SendLogs(context.Background(), payload)
 		if err != nil {
 			t.Errorf("SendLogs() error = %v", err)
 			return
@@ -143,8 +145,8 @@ func TestSendLogsError(t *testing.T) {
 
 	type args struct {
 		log        string
-		resourceId map[string]string
-		metadata   map[string]string
+		resourceId map[string]interface{}
+		metadata   map[string]interface{}
 	}
 
 	type fields struct {
@@ -166,8 +168,8 @@ func TestSendLogsError(t *testing.T) {
 		},
 		args: args{
 			log:        "This is test message",
-			resourceId: map[string]string{"test": "resource"},
-			metadata:   map[string]string{"test": "metadata"},
+			resourceId: map[string]interface{}{"test": "resource"},
+			metadata:   map[string]interface{}{"test": "metadata"},
 		},
 	}
 
@@ -180,7 +182,8 @@ func TestSendLogsError(t *testing.T) {
 			auth:        test.fields.auth,
 			rateLimiter: rateLimiter,
 		}
-		err := e.SendLogs(context.Background(), test.args.log, test.args.resourceId, test.args.metadata)
+		payload := translator.ConvertToLMLogInput(test.args.log, time.Now().String(), test.args.resourceId, test.args.metadata)
+		err := e.SendLogs(context.Background(), payload)
 		if err == nil {
 			t.Errorf("SendLogs() expected error but got = %v", err)
 			return
@@ -201,8 +204,8 @@ func TestSendLogsBatch(t *testing.T) {
 
 	type args struct {
 		log        string
-		resourceId map[string]string
-		metadata   map[string]string
+		resourceId map[string]interface{}
+		metadata   map[string]interface{}
 	}
 
 	type fields struct {
@@ -224,8 +227,8 @@ func TestSendLogsBatch(t *testing.T) {
 		},
 		args: args{
 			log:        "This is test batch message",
-			resourceId: map[string]string{"test": "resource"},
-			metadata:   map[string]string{"test": "metadata"},
+			resourceId: map[string]interface{}{"test": "resource"},
+			metadata:   map[string]interface{}{"test": "metadata"},
 		},
 	}
 
@@ -240,7 +243,8 @@ func TestSendLogsBatch(t *testing.T) {
 			interval:    1 * time.Second,
 			rateLimiter: rateLimiter,
 		}
-		err := e.SendLogs(context.Background(), test.args.log, test.args.resourceId, test.args.metadata)
+		payload := translator.ConvertToLMLogInput(test.args.log, time.Now().String(), test.args.resourceId, test.args.metadata)
+		err := e.SendLogs(context.Background(), payload)
 		if err != nil {
 			t.Errorf("SendLogs() error = %v", err)
 			return
@@ -252,8 +256,8 @@ func TestSendLogsBatch(t *testing.T) {
 func TestAddRequest(t *testing.T) {
 	logInput := model.LogInput{
 		Message:    "This is 1st message",
-		ResourceID: map[string]string{"test": "resource"},
-		Metadata:   map[string]string{"test": "metadata"},
+		ResourceID: map[string]interface{}{"test": "resource"},
+		Metadata:   map[string]interface{}{"test": "metadata"},
 		//Timestamp:  "",
 	}
 	before := len(logBatch)
@@ -282,20 +286,20 @@ func TestCreateRestLogsBody(t *testing.T) {
 
 	logInput1 := model.LogInput{
 		Message:    "This is 1st message",
-		ResourceID: map[string]string{"test": "resource"},
-		Metadata:   map[string]string{"test": "metadata"},
+		ResourceID: map[string]interface{}{"test": "resource"},
+		Metadata:   map[string]interface{}{"test": "metadata"},
 		//Timestamp:  "",
 	}
 	logInput2 := model.LogInput{
 		Message:    "This is 2nd message",
-		ResourceID: map[string]string{"test": "resource"},
-		Metadata:   map[string]string{"test": "metadata"},
+		ResourceID: map[string]interface{}{"test": "resource"},
+		Metadata:   map[string]interface{}{"test": "metadata"},
 		//Timestamp:  "",
 	}
 	logInput3 := model.LogInput{
 		Message:    "This is 3rd message",
-		ResourceID: map[string]string{"test": "resource"},
-		Metadata:   map[string]string{"test": "metadata"},
+		ResourceID: map[string]interface{}{"test": "resource"},
+		Metadata:   map[string]interface{}{"test": "metadata"},
 		//Timestamp:  "",
 	}
 	logBatch = append(logBatch, logInput1, logInput2, logInput3)
@@ -332,8 +336,8 @@ func BenchmarkSendLogs(b *testing.B) {
 
 	type args struct {
 		log        string
-		resourceId map[string]string
-		metadata   map[string]string
+		resourceId map[string]interface{}
+		metadata   map[string]interface{}
 	}
 
 	type fields struct {
@@ -355,8 +359,8 @@ func BenchmarkSendLogs(b *testing.B) {
 		},
 		args: args{
 			log:        "This is test message",
-			resourceId: map[string]string{"test": "resource"},
-			metadata:   map[string]string{"test": "metadata"},
+			resourceId: map[string]interface{}{"test": "resource"},
+			metadata:   map[string]interface{}{"test": "metadata"},
 		},
 	}
 	setLMEnv()
@@ -370,7 +374,8 @@ func BenchmarkSendLogs(b *testing.B) {
 			auth:        test.fields.auth,
 			rateLimiter: rateLimiter,
 		}
-		err := e.SendLogs(context.Background(), test.args.log, test.args.resourceId, test.args.metadata)
+		payload := translator.ConvertToLMLogInput(test.args.log, time.Now().String(), test.args.resourceId, test.args.metadata)
+		err := e.SendLogs(context.Background(), payload)
 		if err != nil {
 			fmt.Print(err)
 			return
