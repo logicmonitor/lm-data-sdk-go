@@ -6,6 +6,7 @@ type DataPayload struct {
 	MetricBodyList           []MetricPayload
 	MetricResourceCreateList []MetricPayload
 	LogBodyList              []LogPayload
+	TracePayload             TracesRequest
 	UpdatePropertiesBody     UpdateProperties
 }
 

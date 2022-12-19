@@ -46,7 +46,7 @@ func (ap AuthParams) GetCredentials(method, resourcePath string, body []byte) st
 	if accessID != "" && accessKey != "" {
 		return generateLMv1Token(method, accessID, accessKey, body, resourcePath).String()
 	} else if bearerToken != "" {
-		return "Bearer " + bearerToken
+		return bearerToken
 	} else if ap.CollectorCredentials != "" {
 		return ap.CollectorCredentials
 	}

@@ -13,7 +13,17 @@ type RateLimiter interface {
 	Shutdown(context.Context)
 }
 
+type SpanRateLimiter interface {
+	SetRequestSpanCount(spanCount int)
+	IncSpanCount()
+	IncSpanPerRequestCount()
+	ResetSpanCount()
+	ResetSpanPerRequestCount()
+}
+
 // RateLimiterSetting represents the RateLimiter config
 type RateLimiterSetting struct {
-	RequestCount int
+	RequestCount        int
+	SpanCount           int
+	SpanCountPerRequest int
 }

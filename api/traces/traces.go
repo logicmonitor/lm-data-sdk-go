@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/logicmonitor/lm-data-sdk-go/internal/client"
@@ -12,17 +13,27 @@ import (
 	"github.com/logicmonitor/lm-data-sdk-go/pkg/batch"
 	rateLimiter "github.com/logicmonitor/lm-data-sdk-go/pkg/ratelimiter"
 	"github.com/logicmonitor/lm-data-sdk-go/utils"
+	"go.opentelemetry.io/collector/model/otlp"
+	"go.opentelemetry.io/collector/model/pdata"
+	"go.opentelemetry.io/collector/pdata/ptrace"
 )
 
-const uri = "/api/v1/traces"
-const defaultBatchingInterval = 10 * time.Second
+const (
+	uri                     = "/api/v1/traces"
+	defaultBatchingInterval = 10 * time.Second
+)
+
+var (
+	traceBatch      *model.TracesRequest
+	traceBatchMutex sync.Mutex
+)
 
 type LMTraceIngest struct {
 	client             *http.Client
 	url                string
 	batch              bool
 	interval           time.Duration
-	auth               model.AuthProvider
+	auth               utils.AuthParams
 	gzip               bool
 	rateLimiterSetting rateLimiter.RateLimiterSetting
 	rateLimiter        rateLimiter.RateLimiter
@@ -35,16 +46,11 @@ func NewLMTraceIngest(ctx context.Context, opts ...Option) (*LMTraceIngest, erro
 	clientTransport := (http.RoundTripper)(transport)
 	client := http.Client{Transport: clientTransport, Timeout: 5 * time.Second}
 
-	tracesURL, err := utils.URL()
-	if err != nil {
-		return nil, fmt.Errorf("error in forming Traces URL: %v", err)
-	}
 	lti := LMTraceIngest{
 		client:             &client,
-		url:                tracesURL,
 		batch:              true,
 		interval:           defaultBatchingInterval,
-		auth:               model.DefaultAuthenticator{},
+		auth:               utils.AuthParams{},
 		gzip:               true,
 		rateLimiterSetting: rateLimiter.RateLimiterSetting{},
 	}
@@ -55,11 +61,22 @@ func NewLMTraceIngest(ctx context.Context, opts ...Option) (*LMTraceIngest, erro
 		}
 	}
 
+	var err error
+	if lti.url == "" {
+		tracesURL, err := utils.URL()
+		if err != nil {
+			return nil, fmt.Errorf("error in forming Traces URL: %v", err)
+		}
+		lti.url = tracesURL
+	}
+
 	lti.rateLimiter, err = rateLimiter.NewTraceRateLimiter(lti.rateLimiterSetting)
 	if err != nil {
 		return nil, err
 	}
+	go lti.rateLimiter.Run(ctx)
 
+	initializeTraceRequest()
 	if lti.batch {
 		go batch.CreateAndExportData(&lti)
 	}
@@ -77,35 +94,86 @@ func (lti LMTraceIngest) BatchInterval() time.Duration {
 }
 
 // SendTraces is the entry point for receiving trace data
-func (lti *LMTraceIngest) SendTraces(ctx context.Context, traceData []byte) error {
-	headers := make(map[string]string)
-	headers["Content-Type"] = "application/x-protobuf"
-	method := http.MethodPost
-	token := lti.auth.GetCredentials(method, lti.URI(), traceData)
-	cfg := client.RequestConfig{
-		Client:      lti.client,
-		RateLimiter: lti.rateLimiter,
-		Url:         lti.url,
-		Body:        traceData,
-		Uri:         lti.URI(),
-		Method:      method,
-		Token:       token,
-		Gzip:        lti.gzip,
-		Headers:     headers,
+func (lti *LMTraceIngest) SendTraces(ctx context.Context, traceData pdata.Traces) error {
+	if lti.batch {
+		addRequest(traceData)
+	} else {
+		traceBatch.TraceData = traceData
+		traceBatch.SpanCount = traceData.SpanCount()
+		traceDataPayload := model.DataPayload{
+			TracePayload: *traceBatch,
+		}
+
+		return lti.ExportData(traceDataPayload, uri, http.MethodPost)
+	}
+	return nil
+}
+
+func initializeTraceRequest() {
+	traceBatch = &model.TracesRequest{TraceData: ptrace.NewTraces()}
+}
+
+// addRequest adds incoming trace requests to traceBatch internal cache
+func addRequest(traceInput pdata.Traces) {
+	traceBatchMutex.Lock()
+	defer traceBatchMutex.Unlock()
+	newSpanCount := traceInput.SpanCount()
+	if newSpanCount == 0 {
+		return
 	}
 
-	_, err := client.MakeRequest(context.Background(), cfg)
-	if err != nil {
-		return fmt.Errorf("error while exporting traces : %v", err)
-	}
-	return err
+	traceBatch.SpanCount += newSpanCount
+	traceInput.ResourceSpans().MoveAndAppendTo(traceBatch.TraceData.ResourceSpans())
 }
 
 func (lti *LMTraceIngest) CreateRequestBody() model.DataPayload {
-	return model.DataPayload{}
+	traceBatchMutex.Lock()
+	defer traceBatchMutex.Unlock()
+	if traceBatch.SpanCount == 0 {
+		return model.DataPayload{}
+	}
+	payloadList := model.DataPayload{
+		TracePayload: *traceBatch,
+	}
+
+	// flushing out trace batch
+	if lti.batch {
+		traceBatch.SpanCount = 0
+		traceBatch.TraceData = ptrace.NewTraces()
+	}
+	return payloadList
 }
 
 // ExportData exports trace to the LM platform
 func (lti *LMTraceIngest) ExportData(payloadList model.DataPayload, uri, method string) error {
+	if payloadList.TracePayload.SpanCount != 0 {
+		headers := make(map[string]string)
+		headers["Content-Type"] = "application/x-protobuf"
+
+		traceData := payloadList.TracePayload.TraceData
+		tracesMarshaler := otlp.NewProtobufTracesMarshaler()
+		body, err := tracesMarshaler.MarshalTraces(traceData)
+		if err != nil {
+			return err
+		}
+
+		token := lti.auth.GetCredentials(method, lti.URI(), body)
+		cfg := client.RequestConfig{
+			Client:      lti.client,
+			RateLimiter: lti.rateLimiter,
+			Url:         lti.url,
+			Body:        body,
+			Uri:         lti.URI(),
+			Method:      method,
+			Token:       token,
+			Gzip:        lti.gzip,
+			Headers:     headers,
+		}
+
+		_, err = client.MakeRequest(context.Background(), cfg)
+		if err != nil {
+			return fmt.Errorf("error while exporting traces : %v", err)
+		}
+	}
 	return nil
 }

@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/logicmonitor/lm-data-sdk-go/model"
+	"github.com/logicmonitor/lm-data-sdk-go/utils"
 )
 
 type Option func(*LMTraceIngest) error
@@ -26,7 +26,7 @@ func WithTraceBatchingDisabled() Option {
 }
 
 // WithAuthentication is used for passing authentication token if not set in environment variables.
-func WithAuthentication(authProvider model.AuthProvider) Option {
+func WithAuthentication(authProvider utils.AuthParams) Option {
 	return func(lti *LMTraceIngest) error {
 		lti.auth = authProvider
 		return nil
