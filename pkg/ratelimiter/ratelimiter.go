@@ -16,9 +16,7 @@ type RateLimiter interface {
 type SpanRateLimiter interface {
 	SetRequestSpanCount(spanCount int)
 	IncSpanCount()
-	IncSpanPerRequestCount()
 	ResetSpanCount()
-	ResetSpanPerRequestCount()
 }
 
 // RateLimiterSetting represents the RateLimiter config

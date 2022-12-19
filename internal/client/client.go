@@ -8,7 +8,7 @@ import (
 
 	rateLimiter "github.com/logicmonitor/lm-data-sdk-go/pkg/ratelimiter"
 	"github.com/logicmonitor/lm-data-sdk-go/utils"
-	"go.opentelemetry.io/collector/pdata/ptrace"
+	"go.opentelemetry.io/collector/pdata/ptrace/ptraceotlp"
 )
 
 type RequestConfig struct {
@@ -56,9 +56,12 @@ func MakeRequest(_ context.Context, reqConfig RequestConfig) (*utils.Response, e
 		req.Header.Set(key, value)
 	}
 
-	spanlimiter := reqConfig.RateLimiter.(rateLimiter.SpanRateLimiter)
-	count := getSpanCount(reqConfig.Body)
-	spanlimiter.SetRequestSpanCount(count)
+	spanRateLimiter := ifTraceRequest(reqConfig)
+	if spanRateLimiter != nil {
+		defer spanRateLimiter.ResetSpanCount()
+		spanRateLimiter.SetRequestSpanCount(spanCount(reqConfig.Body))
+	}
+
 	if acquire, err := reqConfig.RateLimiter.Acquire(); !acquire {
 		return nil, err
 	}
@@ -67,16 +70,20 @@ func MakeRequest(_ context.Context, reqConfig RequestConfig) (*utils.Response, e
 	if err != nil {
 		return nil, err
 	}
-	spanlimiter.ResetSpanPerRequestCount()
 
 	return utils.ConvertHTTPToIngestResponse(httpResp)
 }
 
-func getSpanCount(body []byte) int {
-	tracesUnmarshaler := ptrace.NewProtoUnmarshaler()
-	traceData, err := tracesUnmarshaler.UnmarshalTraces(body)
-	if err != nil {
-		return 0
+func ifTraceRequest(reqConfig RequestConfig) rateLimiter.SpanRateLimiter {
+	switch reqConfig.RateLimiter.(type) {
+	case rateLimiter.SpanRateLimiter:
+		spanlimiter := reqConfig.RateLimiter.(rateLimiter.SpanRateLimiter)
+		return spanlimiter
+	default:
+		return nil
 	}
-	return traceData.SpanCount()
+}
+
+func spanCount(body []byte) int {
+	return ptraceotlp.NewExportRequest().Traces().SpanCount()
 }

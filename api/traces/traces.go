@@ -13,9 +13,8 @@ import (
 	"github.com/logicmonitor/lm-data-sdk-go/pkg/batch"
 	rateLimiter "github.com/logicmonitor/lm-data-sdk-go/pkg/ratelimiter"
 	"github.com/logicmonitor/lm-data-sdk-go/utils"
-	"go.opentelemetry.io/collector/model/otlp"
-	"go.opentelemetry.io/collector/model/pdata"
 	"go.opentelemetry.io/collector/pdata/ptrace"
+	"go.opentelemetry.io/collector/pdata/ptrace/ptraceotlp"
 )
 
 const (
@@ -94,7 +93,7 @@ func (lti LMTraceIngest) BatchInterval() time.Duration {
 }
 
 // SendTraces is the entry point for receiving trace data
-func (lti *LMTraceIngest) SendTraces(ctx context.Context, traceData pdata.Traces) error {
+func (lti *LMTraceIngest) SendTraces(ctx context.Context, traceData ptrace.Traces) error {
 	if lti.batch {
 		addRequest(traceData)
 	} else {
@@ -114,7 +113,7 @@ func initializeTraceRequest() {
 }
 
 // addRequest adds incoming trace requests to traceBatch internal cache
-func addRequest(traceInput pdata.Traces) {
+func addRequest(traceInput ptrace.Traces) {
 	traceBatchMutex.Lock()
 	defer traceBatchMutex.Unlock()
 	newSpanCount := traceInput.SpanCount()
@@ -151,8 +150,8 @@ func (lti *LMTraceIngest) ExportData(payloadList model.DataPayload, uri, method 
 		headers["Content-Type"] = "application/x-protobuf"
 
 		traceData := payloadList.TracePayload.TraceData
-		tracesMarshaler := otlp.NewProtobufTracesMarshaler()
-		body, err := tracesMarshaler.MarshalTraces(traceData)
+		tr := ptraceotlp.NewExportRequestFromTraces(traceData)
+		body, err := tr.MarshalProto()
 		if err != nil {
 			return err
 		}

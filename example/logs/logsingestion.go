@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/logicmonitor/lm-data-sdk-go/api/logs"
+	"github.com/logicmonitor/lm-data-sdk-go/utils/translator"
 )
 
 func main() {
@@ -25,7 +26,8 @@ func main() {
 	}
 
 	fmt.Println("Sending log1....")
-	err = lmLog.SendLogs(context.Background(), logstr, map[string]string{"system.displayname": "example-cart-service"}, map[string]string{"testkey": "testvalue"})
+	logInput1 := translator.ConvertToLMLogInput(logstr, time.Now().String(), map[string]string{"system.displayname": "example-cart-service"}, map[string]string{"testkey": "testvalue"})
+	err = lmLog.SendLogs(context.Background(), logInput1)
 	if err != nil {
 		fmt.Println("Error in sending log: ", err)
 	}
@@ -33,7 +35,8 @@ func main() {
 	time.Sleep(2 * time.Second)
 
 	fmt.Println("Sending log2....")
-	err = lmLog.SendLogs(context.Background(), logstr2, map[string]string{"system.displayname": "example-cart-service"}, map[string]string{"testkey": "testvalue"})
+	logInput2 := translator.ConvertToLMLogInput(logstr2, time.Now().String(), map[string]string{"system.displayname": "example-cart-service"}, map[string]string{"testkey": "testvalue"})
+	err = lmLog.SendLogs(context.Background(), logInput2)
 	if err != nil {
 		fmt.Println("Error in sending log: ", err)
 	}
@@ -41,7 +44,8 @@ func main() {
 	time.Sleep(3 * time.Second)
 
 	fmt.Println("Sending log3....")
-	err = lmLog.SendLogs(context.Background(), logstr3, map[string]string{"system.displayname": "example-cart-service"}, map[string]string{"testkey": "testvalue"})
+	logInput3 := translator.ConvertToLMLogInput(logstr3, time.Now().String(), map[string]string{"system.displayname": "example-cart-service"}, map[string]string{"testkey": "testvalue"})
+	err = lmLog.SendLogs(context.Background(), logInput3)
 	if err != nil {
 		fmt.Println("Error in sending log: ", err)
 	}
