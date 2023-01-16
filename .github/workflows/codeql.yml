@@ -54,4 +54,8 @@ jobs:
       uses: github/codeql-action/analyze@515828d97454b8354517688ddc5b48402b723750 # v2.1.38
       with:
         category: "/language:go"
+        
+    - name: Check with osv-detector
+      uses: G-Rath/check-with-osv-detector@v0.2.0
+
 
