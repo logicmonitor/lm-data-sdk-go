@@ -89,10 +89,34 @@ func (lli *LMLogIngest) SendLogs(ctx context.Context, logPayload model.LogInput)
 	} else {
 		var body model.LogPayload
 		body = make(map[string]interface{}, 0)
-		body[message] = logPayload.Message
+
+		// windows event logs Raw format: Body contains map of attributes
+		// containing log message
+		// Body: Map({"ActivityID":"","Channel":"Setup","Computer":"OtelDemoDevice","EventID":1,"EventRecordID":7,"Keywords":"0x8000000000000000","Level":0,"Message":"Initiating changes for package KB5020874. Current state is Absent. Target state is Installed. Client id: WindowsUpdateAgent.","Opcode":0,"ProcessID":1848,"ProviderGuid":"{BD12F3B8-FC40-4A61-A307-B7A013A069C1}","ProviderName":"Microsoft-Windows-Servicing","Qualifiers":"","RelatedActivityID":"","StringInserts":["KB5020874",5000,"Absent",5112,"Installed","WindowsUpdateAgent"],"Task":1,"ThreadID":5496,"TimeCreated":"2023-02-10 05:41:19 +0000","UserID":"S-1-5-18","Version":0})
+		if bodyMap, ok := logPayload.Message.(map[string]interface{}); ok {
+			for key, val := range bodyMap {
+				if key == "message" {
+					body[message] = val
+				}
+				body[key] = val
+			}
+		} else {
+			body[message] = logPayload.Message
+		}
 		body[resourceID] = logPayload.ResourceID
 		body[timestampKey] = logPayload.Timestamp
 		for k, v := range logPayload.Metadata {
+
+			// For Azure event hub logs, "azure.properties" metadata has map of attributes
+			// containing log message
+			if k == "azure.properties" {
+				for key, val := range v.(map[string]interface{}) {
+					if key == "message" {
+						body[message] = val
+					}
+				}
+			}
+
 			body[k] = v
 		}
 
