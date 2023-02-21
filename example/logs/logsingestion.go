@@ -6,12 +6,12 @@ import (
 	"time"
 
 	"github.com/logicmonitor/lm-data-sdk-go/api/logs"
+	"github.com/logicmonitor/lm-data-sdk-go/utils"
+	"github.com/logicmonitor/lm-data-sdk-go/utils/translator"
 )
 
 func main() {
-	logstr := "This is a test message"
-	logstr2 := "This is 2nd log"
-	logstr3 := "this is 3rd log"
+	logMessage := "This is a test message"
 
 	options := []logs.Option{
 		logs.WithLogBatchingDisabled(),
@@ -24,24 +24,12 @@ func main() {
 		return
 	}
 
+	resourceIDs := map[string]interface{}{"system.displayname": "example-cart-service"}
+	metadata := map[string]interface{}{"testKey": "testValue"}
+
 	fmt.Println("Sending log1....")
-	err = lmLog.SendLogs(context.Background(), logstr, map[string]string{"system.displayname": "example-cart-service"}, map[string]string{"testkey": "testvalue"})
-	if err != nil {
-		fmt.Println("Error in sending log: ", err)
-	}
-
-	time.Sleep(2 * time.Second)
-
-	fmt.Println("Sending log2....")
-	err = lmLog.SendLogs(context.Background(), logstr2, map[string]string{"system.displayname": "example-cart-service"}, map[string]string{"testkey": "testvalue"})
-	if err != nil {
-		fmt.Println("Error in sending log: ", err)
-	}
-
-	time.Sleep(3 * time.Second)
-
-	fmt.Println("Sending log3....")
-	err = lmLog.SendLogs(context.Background(), logstr3, map[string]string{"system.displayname": "example-cart-service"}, map[string]string{"testkey": "testvalue"})
+	logInput := translator.ConvertToLMLogInput(logMessage, utils.NewTimestampFromTime(time.Now()).String(), resourceIDs, metadata)
+	err = lmLog.SendLogs(context.Background(), logInput)
 	if err != nil {
 		fmt.Println("Error in sending log: ", err)
 	}

@@ -14,6 +14,7 @@ import (
 	rateLimiter "github.com/logicmonitor/lm-data-sdk-go/pkg/ratelimiter"
 	"github.com/logicmonitor/lm-data-sdk-go/utils"
 	"github.com/logicmonitor/lm-data-sdk-go/utils/translator"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNewLMLogIngest(t *testing.T) {
@@ -253,7 +254,7 @@ func TestSendLogsBatch(t *testing.T) {
 	cleanupLMEnv()
 }
 
-func TestAddRequest(t *testing.T) {
+func TestPushToBatch(t *testing.T) {
 	logInput := model.LogInput{
 		Message:    "This is 1st message",
 		ResourceID: map[string]interface{}{"test": "resource"},
@@ -261,7 +262,7 @@ func TestAddRequest(t *testing.T) {
 		//Timestamp:  "",
 	}
 	before := len(logBatch)
-	addRequest(logInput)
+	pushToBatch(logInput)
 	after := len(logBatch)
 	if after != (before + 1) {
 		t.Errorf("AddRequest() error = %s", "unable to add new request to cache")
@@ -380,5 +381,91 @@ func BenchmarkSendLogs(b *testing.B) {
 			fmt.Print(err)
 			return
 		}
+	}
+}
+
+func TestBuildPayload(t *testing.T) {
+	type args struct {
+		log        interface{}
+		timestamp  string
+		resourceId map[string]interface{}
+		metadata   map[string]interface{}
+	}
+
+	tests := []struct {
+		name            string
+		args            args
+		expectedPayload model.LogPayload
+	}{
+		{
+			name: "log message value in string format",
+			args: args{
+				log:        "This is test batch message",
+				timestamp:  "04:33:37.4203915 +0000 UTC",
+				resourceId: map[string]interface{}{"host.name": "test"},
+				metadata:   map[string]interface{}{"cloud.provider": "aws"},
+			},
+			expectedPayload: map[string]interface{}{
+				lmLogsMessageKey: "This is test batch message",
+				resourceIDKey:    map[string]interface{}{"host.name": "test"},
+				timestampKey:     "04:33:37.4203915 +0000 UTC",
+				"cloud.provider": "aws",
+			},
+		},
+		{
+			name: "log message value in map format",
+			args: args{
+				log:        map[string]interface{}{"channel": "Security", "computer": "OtelDemoDevice", "details": map[string]interface{}{"Account For Which Logon Failed": map[string]interface{}{"Account Domain": "OTELDEMODEVICE", "Account Name": "Administrator Security", "ID": "S-1-0-0"}}, "message": "An account failed to log on."},
+				timestamp:  "04:33:37.4203915 +0000 UTC",
+				resourceId: map[string]interface{}{"host.name": "test"},
+				metadata:   map[string]interface{}{"cloud.provider": "azure"},
+			},
+			expectedPayload: map[string]interface{}{
+				lmLogsMessageKey: "An account failed to log on.",
+				resourceIDKey:    map[string]interface{}{"host.name": "test"},
+				timestampKey:     "04:33:37.4203915 +0000 UTC",
+				"cloud.provider": "azure",
+				"channel":        "Security",
+				"computer":       "OtelDemoDevice",
+				"details":        map[string]interface{}{"Account For Which Logon Failed": map[string]interface{}{"Account Domain": "OTELDEMODEVICE", "Account Name": "Administrator Security", "ID": "S-1-0-0"}},
+			},
+		},
+		{
+			name: "log message value from metadata",
+			args: args{
+				log:        nil,
+				timestamp:  "04:33:37.4203915 +0000 UTC",
+				resourceId: map[string]interface{}{"host.name": "test"},
+				metadata: map[string]interface{}{"azure.category": "FunctionAppLogs", "azure.properties": map[string]interface{}{
+					"appName":   "adityadotnet",
+					"category":  "Function.ConnectDB",
+					"eventId":   1,
+					"eventName": "FunctionStarted",
+					"level":     "Information",
+					"message":   "Executing 'Functions.ConnectDB' (Reason='This function was programmatically called via the host APIs.",
+				}},
+			},
+			expectedPayload: map[string]interface{}{
+				lmLogsMessageKey: "Executing 'Functions.ConnectDB' (Reason='This function was programmatically called via the host APIs.",
+				resourceIDKey:    map[string]interface{}{"host.name": "test"},
+				timestampKey:     "04:33:37.4203915 +0000 UTC",
+				"azure.category": "FunctionAppLogs",
+				"azure.properties": map[string]interface{}{
+					"appName":   "adityadotnet",
+					"category":  "Function.ConnectDB",
+					"eventId":   1,
+					"eventName": "FunctionStarted",
+					"level":     "Information",
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logInput := translator.ConvertToLMLogInput(tt.args.log, tt.args.timestamp, tt.args.resourceId, tt.args.metadata)
+			payload := buildPayload(logInput)
+			assert.Equal(t, tt.expectedPayload, payload)
+		})
 	}
 }

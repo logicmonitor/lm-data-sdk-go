@@ -126,7 +126,7 @@ if err != nil {
 	fmt.Println("Error in initilaizing log ingest ", err)
 	return
 }
-payload := translator.ConvertToLMLogInput(log.Body().Str(), timestampFromLogRecord(log).String(), resourceMapperMap, logMetadataMap)
+payload := translator.ConvertToLMLogInput(logMessage, utils.NewTimestampFromTime(time.Now()).String(), resourceMapperMap, logMetadataMap)
 err := lmLogClient.SendLogs(ctx, payload)
 if err != nil {
 	log.Error("error while exporting logs ", err)
