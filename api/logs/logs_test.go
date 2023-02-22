@@ -13,6 +13,8 @@ import (
 	"github.com/logicmonitor/lm-data-sdk-go/model"
 	rateLimiter "github.com/logicmonitor/lm-data-sdk-go/pkg/ratelimiter"
 	"github.com/logicmonitor/lm-data-sdk-go/utils"
+	"github.com/logicmonitor/lm-data-sdk-go/utils/translator"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNewLMLogIngest(t *testing.T) {
@@ -84,8 +86,8 @@ func TestSendLogs(t *testing.T) {
 
 	type args struct {
 		log        string
-		resourceId map[string]string
-		metadata   map[string]string
+		resourceId map[string]interface{}
+		metadata   map[string]interface{}
 	}
 
 	type fields struct {
@@ -107,8 +109,8 @@ func TestSendLogs(t *testing.T) {
 		},
 		args: args{
 			log:        "This is test message",
-			resourceId: map[string]string{"test": "resource"},
-			metadata:   map[string]string{"test": "metadata"},
+			resourceId: map[string]interface{}{"test": "resource"},
+			metadata:   map[string]interface{}{"test": "metadata"},
 		},
 	}
 
@@ -121,7 +123,8 @@ func TestSendLogs(t *testing.T) {
 			auth:        test.fields.auth,
 			rateLimiter: rateLimiter,
 		}
-		err := e.SendLogs(context.Background(), test.args.log, test.args.resourceId, test.args.metadata)
+		payload := translator.ConvertToLMLogInput(test.args.log, time.Now().String(), test.args.resourceId, test.args.metadata)
+		err := e.SendLogs(context.Background(), payload)
 		if err != nil {
 			t.Errorf("SendLogs() error = %v", err)
 			return
@@ -143,8 +146,8 @@ func TestSendLogsError(t *testing.T) {
 
 	type args struct {
 		log        string
-		resourceId map[string]string
-		metadata   map[string]string
+		resourceId map[string]interface{}
+		metadata   map[string]interface{}
 	}
 
 	type fields struct {
@@ -166,8 +169,8 @@ func TestSendLogsError(t *testing.T) {
 		},
 		args: args{
 			log:        "This is test message",
-			resourceId: map[string]string{"test": "resource"},
-			metadata:   map[string]string{"test": "metadata"},
+			resourceId: map[string]interface{}{"test": "resource"},
+			metadata:   map[string]interface{}{"test": "metadata"},
 		},
 	}
 
@@ -180,7 +183,8 @@ func TestSendLogsError(t *testing.T) {
 			auth:        test.fields.auth,
 			rateLimiter: rateLimiter,
 		}
-		err := e.SendLogs(context.Background(), test.args.log, test.args.resourceId, test.args.metadata)
+		payload := translator.ConvertToLMLogInput(test.args.log, time.Now().String(), test.args.resourceId, test.args.metadata)
+		err := e.SendLogs(context.Background(), payload)
 		if err == nil {
 			t.Errorf("SendLogs() expected error but got = %v", err)
 			return
@@ -201,8 +205,8 @@ func TestSendLogsBatch(t *testing.T) {
 
 	type args struct {
 		log        string
-		resourceId map[string]string
-		metadata   map[string]string
+		resourceId map[string]interface{}
+		metadata   map[string]interface{}
 	}
 
 	type fields struct {
@@ -224,8 +228,8 @@ func TestSendLogsBatch(t *testing.T) {
 		},
 		args: args{
 			log:        "This is test batch message",
-			resourceId: map[string]string{"test": "resource"},
-			metadata:   map[string]string{"test": "metadata"},
+			resourceId: map[string]interface{}{"test": "resource"},
+			metadata:   map[string]interface{}{"test": "metadata"},
 		},
 	}
 
@@ -240,7 +244,8 @@ func TestSendLogsBatch(t *testing.T) {
 			interval:    1 * time.Second,
 			rateLimiter: rateLimiter,
 		}
-		err := e.SendLogs(context.Background(), test.args.log, test.args.resourceId, test.args.metadata)
+		payload := translator.ConvertToLMLogInput(test.args.log, time.Now().String(), test.args.resourceId, test.args.metadata)
+		err := e.SendLogs(context.Background(), payload)
 		if err != nil {
 			t.Errorf("SendLogs() error = %v", err)
 			return
@@ -249,15 +254,15 @@ func TestSendLogsBatch(t *testing.T) {
 	cleanupLMEnv()
 }
 
-func TestAddRequest(t *testing.T) {
+func TestPushToBatch(t *testing.T) {
 	logInput := model.LogInput{
 		Message:    "This is 1st message",
-		ResourceID: map[string]string{"test": "resource"},
-		Metadata:   map[string]string{"test": "metadata"},
+		ResourceID: map[string]interface{}{"test": "resource"},
+		Metadata:   map[string]interface{}{"test": "metadata"},
 		//Timestamp:  "",
 	}
 	before := len(logBatch)
-	addRequest(logInput)
+	pushToBatch(logInput)
 	after := len(logBatch)
 	if after != (before + 1) {
 		t.Errorf("AddRequest() error = %s", "unable to add new request to cache")
@@ -282,20 +287,20 @@ func TestCreateRestLogsBody(t *testing.T) {
 
 	logInput1 := model.LogInput{
 		Message:    "This is 1st message",
-		ResourceID: map[string]string{"test": "resource"},
-		Metadata:   map[string]string{"test": "metadata"},
+		ResourceID: map[string]interface{}{"test": "resource"},
+		Metadata:   map[string]interface{}{"test": "metadata"},
 		//Timestamp:  "",
 	}
 	logInput2 := model.LogInput{
 		Message:    "This is 2nd message",
-		ResourceID: map[string]string{"test": "resource"},
-		Metadata:   map[string]string{"test": "metadata"},
+		ResourceID: map[string]interface{}{"test": "resource"},
+		Metadata:   map[string]interface{}{"test": "metadata"},
 		//Timestamp:  "",
 	}
 	logInput3 := model.LogInput{
 		Message:    "This is 3rd message",
-		ResourceID: map[string]string{"test": "resource"},
-		Metadata:   map[string]string{"test": "metadata"},
+		ResourceID: map[string]interface{}{"test": "resource"},
+		Metadata:   map[string]interface{}{"test": "metadata"},
 		//Timestamp:  "",
 	}
 	logBatch = append(logBatch, logInput1, logInput2, logInput3)
@@ -332,8 +337,8 @@ func BenchmarkSendLogs(b *testing.B) {
 
 	type args struct {
 		log        string
-		resourceId map[string]string
-		metadata   map[string]string
+		resourceId map[string]interface{}
+		metadata   map[string]interface{}
 	}
 
 	type fields struct {
@@ -355,8 +360,8 @@ func BenchmarkSendLogs(b *testing.B) {
 		},
 		args: args{
 			log:        "This is test message",
-			resourceId: map[string]string{"test": "resource"},
-			metadata:   map[string]string{"test": "metadata"},
+			resourceId: map[string]interface{}{"test": "resource"},
+			metadata:   map[string]interface{}{"test": "metadata"},
 		},
 	}
 	setLMEnv()
@@ -370,10 +375,97 @@ func BenchmarkSendLogs(b *testing.B) {
 			auth:        test.fields.auth,
 			rateLimiter: rateLimiter,
 		}
-		err := e.SendLogs(context.Background(), test.args.log, test.args.resourceId, test.args.metadata)
+		payload := translator.ConvertToLMLogInput(test.args.log, time.Now().String(), test.args.resourceId, test.args.metadata)
+		err := e.SendLogs(context.Background(), payload)
 		if err != nil {
 			fmt.Print(err)
 			return
 		}
+	}
+}
+
+func TestBuildPayload(t *testing.T) {
+	type args struct {
+		log        interface{}
+		timestamp  string
+		resourceId map[string]interface{}
+		metadata   map[string]interface{}
+	}
+
+	tests := []struct {
+		name            string
+		args            args
+		expectedPayload model.LogPayload
+	}{
+		{
+			name: "log message value in string format",
+			args: args{
+				log:        "This is test batch message",
+				timestamp:  "04:33:37.4203915 +0000 UTC",
+				resourceId: map[string]interface{}{"host.name": "test"},
+				metadata:   map[string]interface{}{"cloud.provider": "aws"},
+			},
+			expectedPayload: map[string]interface{}{
+				lmLogsMessageKey: "This is test batch message",
+				resourceIDKey:    map[string]interface{}{"host.name": "test"},
+				timestampKey:     "04:33:37.4203915 +0000 UTC",
+				"cloud.provider": "aws",
+			},
+		},
+		{
+			name: "log message value in map format",
+			args: args{
+				log:        map[string]interface{}{"channel": "Security", "computer": "OtelDemoDevice", "details": map[string]interface{}{"Account For Which Logon Failed": map[string]interface{}{"Account Domain": "OTELDEMODEVICE", "Account Name": "Administrator Security", "ID": "S-1-0-0"}}, "message": "An account failed to log on."},
+				timestamp:  "04:33:37.4203915 +0000 UTC",
+				resourceId: map[string]interface{}{"host.name": "test"},
+				metadata:   map[string]interface{}{"cloud.provider": "azure"},
+			},
+			expectedPayload: map[string]interface{}{
+				lmLogsMessageKey: "An account failed to log on.",
+				resourceIDKey:    map[string]interface{}{"host.name": "test"},
+				timestampKey:     "04:33:37.4203915 +0000 UTC",
+				"cloud.provider": "azure",
+				"channel":        "Security",
+				"computer":       "OtelDemoDevice",
+				"details":        map[string]interface{}{"Account For Which Logon Failed": map[string]interface{}{"Account Domain": "OTELDEMODEVICE", "Account Name": "Administrator Security", "ID": "S-1-0-0"}},
+			},
+		},
+		{
+			name: "log message value from metadata",
+			args: args{
+				log:        nil,
+				timestamp:  "04:33:37.4203915 +0000 UTC",
+				resourceId: map[string]interface{}{"host.name": "test"},
+				metadata: map[string]interface{}{"azure.category": "FunctionAppLogs", "azure.properties": map[string]interface{}{
+					"appName":   "adityadotnet",
+					"category":  "Function.ConnectDB",
+					"eventId":   1,
+					"eventName": "FunctionStarted",
+					"level":     "Information",
+					"message":   "Executing 'Functions.ConnectDB' (Reason='This function was programmatically called via the host APIs.",
+				}},
+			},
+			expectedPayload: map[string]interface{}{
+				lmLogsMessageKey: "Executing 'Functions.ConnectDB' (Reason='This function was programmatically called via the host APIs.",
+				resourceIDKey:    map[string]interface{}{"host.name": "test"},
+				timestampKey:     "04:33:37.4203915 +0000 UTC",
+				"azure.category": "FunctionAppLogs",
+				"azure.properties": map[string]interface{}{
+					"appName":   "adityadotnet",
+					"category":  "Function.ConnectDB",
+					"eventId":   1,
+					"eventName": "FunctionStarted",
+					"level":     "Information",
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logInput := translator.ConvertToLMLogInput(tt.args.log, tt.args.timestamp, tt.args.resourceId, tt.args.metadata)
+			payload := buildPayload(logInput)
+			assert.Equal(t, tt.expectedPayload, payload)
+		})
 	}
 }
