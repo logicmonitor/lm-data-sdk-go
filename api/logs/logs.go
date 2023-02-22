@@ -106,15 +106,17 @@ func buildPayload(logInput model.LogInput) model.LogPayload {
 
 	var messageFound bool
 
-	switch logInput.Message.(type) {
+	switch value := logInput.Message.(type) {
 	case string:
-		messageFound = parseStringMessage(logInput.Message, body)
+		parseStringMessage(value, body)
+		messageFound = true
 		for k, v := range logInput.Metadata {
 			body[k] = v
 		}
 
 	case map[string]interface{}:
-		messageFound = parseMessageMap(logInput.Message, body)
+		parseMapMessage(value, body)
+		messageFound = true
 		for k, v := range logInput.Metadata {
 			body[k] = v
 		}
@@ -137,32 +139,24 @@ func buildPayload(logInput model.LogInput) model.LogPayload {
 }
 
 // parseStringMessage extracts the message value from the string body
-func parseStringMessage(message interface{}, body map[string]interface{}) bool {
-	if value, ok := message.(string); ok {
-		body[lmLogsMessageKey] = value
-		return true
-	}
-	return false
+func parseStringMessage(value string, body map[string]interface{}) {
+	body[lmLogsMessageKey] = value
 }
 
-// parseMessageMap extracts the message value from the body whose value is in map format
-func parseMessageMap(message interface{}, body map[string]interface{}) bool {
+// parseMapMessage extracts the message value from the map type log body
+func parseMapMessage(properties map[string]interface{}, body map[string]interface{}) {
 	// for eg.
 	// windows event logs Raw format: Body contains map of attributes
 	// containing log message
 	// Body: Map({"ActivityID":"","Channel":"Setup","Computer":"OtelDemoDevice","EventID":1,"EventRecordID":7,"Keywords":"0x8000000000000000","Level":0,"Message":"Initiating changes for package KB5020874. Current state is Absent. Target state is Installed. Client id: WindowsUpdateAgent.","Opcode":0,"ProcessID":1848,"ProviderGuid":"{BD12F3B8-FC40-4A61-A307-B7A013A069C1}","ProviderName":"Microsoft-Windows-Servicing","Qualifiers":"","RelatedActivityID":"","StringInserts":["KB5020874",5000,"Absent",5112,"Installed","WindowsUpdateAgent"],"Task":1,"ThreadID":5496,"TimeCreated":"2023-02-10 05:41:19 +0000","UserID":"S-1-5-18","Version":0})
 
-	if properties, ok := message.(map[string]interface{}); ok {
-		for name, value := range properties {
-			if strings.EqualFold(name, commonMessageKey) {
-				body[lmLogsMessageKey] = value
-			} else {
-				body[name] = value
-			}
+	for name, value := range properties {
+		if strings.EqualFold(name, commonMessageKey) {
+			body[lmLogsMessageKey] = value
+		} else {
+			body[name] = value
 		}
-		return true
 	}
-	return false
 }
 
 // parseMessageFromMetadata extracts the message value from the metadata attributes
