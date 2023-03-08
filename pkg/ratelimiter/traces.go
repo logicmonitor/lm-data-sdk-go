@@ -25,8 +25,18 @@ type TraceRateLimiter struct {
 	shutdownCh             chan struct{}
 }
 
+type TraceRateLimiterSetting struct {
+	RequestCount        int
+	SpanCount           int
+	SpanCountPerRequest int
+}
+
+type TracePayloadMetadata struct {
+	RequestSpanCount uint64
+}
+
 // NewTraceRateLimiter creates RateLimiter implementation for traces using RateLimiterSetting
-func NewTraceRateLimiter(setting RateLimiterSetting) (*TraceRateLimiter, error) {
+func NewTraceRateLimiter(setting TraceRateLimiterSetting) (*TraceRateLimiter, error) {
 	if setting.RequestCount == 0 {
 		setting.RequestCount = defaultRequestsPerMinuteLimit
 	}
@@ -46,51 +56,52 @@ func NewTraceRateLimiter(setting RateLimiterSetting) (*TraceRateLimiter, error) 
 }
 
 // IncRequestCount increments the request count associated with traces by 1
-func (rateLimiter *TraceRateLimiter) IncRequestCount() {
+func (rateLimiter *TraceRateLimiter) incRequestCount() {
 	atomic.AddUint64(&rateLimiter.requestCount, 1)
 }
 
 // IncSpanCount increments the span count associated with traces by no. of spans
-func (rateLimiter *TraceRateLimiter) IncSpanCount() {
-	atomic.AddUint64(&rateLimiter.spanCount, rateLimiter.requestSpanCount)
+func (rateLimiter *TraceRateLimiter) incSpanCount(requestSpanCount uint64) {
+	atomic.AddUint64(&rateLimiter.spanCount, requestSpanCount)
 }
 
 // ResetRequestCount resets the request count associated with traces to 0
-func (rateLimiter *TraceRateLimiter) ResetRequestCount() {
+func (rateLimiter *TraceRateLimiter) resetRequestCount() {
 	atomic.StoreUint64(&rateLimiter.requestCount, 0)
 }
 
-// ResetSpanCount resets the request count associated with traces to 0
-func (rateLimiter *TraceRateLimiter) ResetSpanCount() {
+// ResetSpanCount resets the span count associated with traces to 0
+func (rateLimiter *TraceRateLimiter) resetSpanCount() {
 	atomic.StoreUint64(&rateLimiter.spanCount, 0)
 }
 
-// ResetSpanPerRequestCount resets the request count associated with traces to 0
-func (rateLimiter *TraceRateLimiter) SetRequestSpanCount(count int) {
-	atomic.StoreUint64(&rateLimiter.requestSpanCount, uint64(count))
-}
-
 // Acquire checks if the requests count for traces is reached to maximum allocated quota per minute.
-func (rateLimiter *TraceRateLimiter) Acquire() (bool, error) {
+func (rateLimiter *TraceRateLimiter) Acquire(payloadMetadata interface{}) (bool, error) {
+	tracePayloadMetadata, ok := payloadMetadata.(TracePayloadMetadata)
+	if !ok {
+		return false, fmt.Errorf("payload metadata is not of type TracePaylaodMetadata")
+	}
 	select {
 	case <-rateLimiter.shutdownCh:
 		return false, fmt.Errorf("shutdown is called")
 	default:
-		if rateLimiter.requestCount < rateLimiter.maxRequestCount {
-			rateLimiter.IncRequestCount()
-		} else {
+		// check request count rate limit
+		if atomic.LoadUint64(&rateLimiter.requestCount) >= rateLimiter.maxRequestCount {
 			return false, fmt.Errorf("request quota of requests per min for the traces is exhausted for the interval")
 		}
+		// check spans per request rate limit
+		if tracePayloadMetadata.RequestSpanCount > rateLimiter.maxSpanCountPerRequest {
+			return false, fmt.Errorf("request quota of span count per request for the traces is exhausted")
+		}
 
-		if rateLimiter.spanCount < rateLimiter.maxSpanCount {
-			rateLimiter.IncSpanCount()
-		} else {
+		// check span count over a duration rate limit
+		if atomic.LoadUint64(&rateLimiter.spanCount)+tracePayloadMetadata.RequestSpanCount > rateLimiter.maxSpanCount {
 			return false, fmt.Errorf("request quota of span count per min for the traces is exhausted for the interval")
 		}
 
-		if rateLimiter.requestSpanCount > rateLimiter.maxSpanCountPerRequest {
-			return false, fmt.Errorf("request quota of span count per request for the traces is exhausted")
-		}
+		// if rate limit is not triggered, update counters with new data
+		rateLimiter.incRequestCount()
+		rateLimiter.incSpanCount(tracePayloadMetadata.RequestSpanCount)
 	}
 	return true, nil
 }
@@ -103,8 +114,8 @@ func (rateLimiter *TraceRateLimiter) Run(ctx context.Context) {
 			rateLimiter.Shutdown(ctx)
 			return
 		case <-rateLimiter.ticker.C:
-			rateLimiter.ResetRequestCount()
-			rateLimiter.ResetSpanCount()
+			rateLimiter.resetRequestCount()
+			rateLimiter.resetSpanCount()
 		}
 	}
 }

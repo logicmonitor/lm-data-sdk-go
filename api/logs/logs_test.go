@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,60 +19,34 @@ import (
 )
 
 func TestNewLMLogIngest(t *testing.T) {
-	type args struct {
-		option []Option
-	}
 
-	tests := []struct {
-		name                string
-		args                args
-		wantBatchingEnabled bool
-		wantInterval        time.Duration
-	}{
-		{
-			name: "New LMLog Ingest with Batching interval passed",
-			args: args{
-				option: []Option{
-					WithLogBatchingInterval(5 * time.Second),
-				},
-			},
-			wantBatchingEnabled: true,
-			wantInterval:        5 * time.Second,
-		},
-		{
-			name: "New LMLog Ingest without Batching enabled",
-			args: args{
-				option: []Option{
-					WithLogBatchingDisabled(),
-				},
-			},
-			wantBatchingEnabled: false,
-			wantInterval:        10 * time.Second,
-		},
-	}
+	t.Run("should return LogIngest instance with default values", func(t *testing.T) {
+		setLMEnv()
+		defer cleanupLMEnv()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			setLMEnv()
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 
-			lli, err := NewLMLogIngest(ctx, tt.args.option...)
-			if err != nil {
-				t.Errorf("NewLMLogIngest() error = %v", err)
-				return
-			}
-			if lli.interval != tt.wantInterval {
-				t.Errorf("NewLMLogIngest() want batch interval = %s , got = %s", tt.wantInterval, lli.interval)
-				return
-			}
-			if lli.batch != tt.wantBatchingEnabled {
-				t.Errorf("NewLMLogIngest() want batching enabled = %t , got = %t", tt.wantBatchingEnabled, lli.batch)
-				return
-			}
-		})
-	}
-	cleanupLMEnv()
+		lli, err := NewLMLogIngest(ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, true, lli.batch.enabled)
+		assert.Equal(t, defaultBatchingInterval, lli.batch.interval)
+		assert.Equal(t, true, lli.gzip)
+		assert.NotNil(t, lli.client)
+	})
+
+	t.Run("should return LogIngest instance with options applied", func(t *testing.T) {
+		setLMEnv()
+		defer cleanupLMEnv()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		lli, err := NewLMLogIngest(ctx, WithLogBatchingInterval(5*time.Second))
+		assert.NoError(t, err)
+		assert.Equal(t, true, lli.batch.enabled)
+		assert.Equal(t, 5*time.Second, lli.batch.interval)
+	})
 }
 
 func TestSendLogs(t *testing.T) {
@@ -84,244 +59,118 @@ func TestSendLogs(t *testing.T) {
 		w.Write(body)
 	}))
 
-	type args struct {
-		log        string
-		resourceId map[string]interface{}
-		metadata   map[string]interface{}
-	}
+	defer ts.Close()
 
-	type fields struct {
-		client *http.Client
-		url    string
-		auth   utils.AuthParams
-	}
-
-	test := struct {
-		name   string
-		fields fields
-		args   args
-	}{
-		name: "Test log export without batching",
-		fields: fields{
-			client: ts.Client(),
-			url:    ts.URL,
-			auth:   utils.AuthParams{},
-		},
-		args: args{
-			log:        "This is test message",
-			resourceId: map[string]interface{}{"test": "resource"},
-			metadata:   map[string]interface{}{"test": "metadata"},
-		},
-	}
-
-	t.Run(test.name, func(t *testing.T) {
+	t.Run("send logs without batching", func(t *testing.T) {
 		setLMEnv()
-		rateLimiter, _ := rateLimiter.NewLogRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 100})
+		defer cleanupLMEnv()
+
+		rateLimiter, _ := rateLimiter.NewLogRateLimiter(rateLimiter.LogRateLimiterSetting{RequestCount: 100})
+
 		e := &LMLogIngest{
-			client:      test.fields.client,
-			url:         test.fields.url,
-			auth:        test.fields.auth,
+			client:      ts.Client(),
+			url:         ts.URL,
+			auth:        utils.AuthParams{},
 			rateLimiter: rateLimiter,
+			batch:       &logsBatch{enabled: false},
 		}
-		payload := translator.ConvertToLMLogInput(test.args.log, time.Now().String(), test.args.resourceId, test.args.metadata)
-		err := e.SendLogs(context.Background(), payload)
-		if err != nil {
-			t.Errorf("SendLogs() error = %v", err)
-			return
-		}
+
+		message := "This is test message"
+		resourceId := map[string]interface{}{"test": "resource"}
+		metadata := map[string]interface{}{"test": "metadata"}
+
+		payload := translator.ConvertToLMLogInput(message, time.Now().String(), resourceId, metadata)
+		_, err := e.SendLogs(context.Background(), []model.LogInput{payload})
+		assert.NoError(t, err)
 	})
-	cleanupLMEnv()
-}
 
-func TestSendLogsError(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := utils.Response{
-			Success: false,
-			Message: "Connection Timeout!!",
-		}
-		body, _ := json.Marshal(response)
-		w.WriteHeader(http.StatusBadGateway)
-		w.Write(body)
-	}))
-
-	type args struct {
-		log        string
-		resourceId map[string]interface{}
-		metadata   map[string]interface{}
-	}
-
-	type fields struct {
-		client *http.Client
-		url    string
-		auth   utils.AuthParams
-	}
-
-	test := struct {
-		name   string
-		fields fields
-		args   args
-	}{
-		name: "Test Connection Timeout",
-		fields: fields{
-			client: ts.Client(),
-			url:    ts.URL,
-			auth:   utils.AuthParams{},
-		},
-		args: args{
-			log:        "This is test message",
-			resourceId: map[string]interface{}{"test": "resource"},
-			metadata:   map[string]interface{}{"test": "metadata"},
-		},
-	}
-
-	t.Run(test.name, func(t *testing.T) {
+	t.Run("send logs with batching enabled", func(t *testing.T) {
 		setLMEnv()
-		rateLimiter, _ := rateLimiter.NewLogRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 100})
+		defer cleanupLMEnv()
+
+		rateLimiter, _ := rateLimiter.NewLogRateLimiter(rateLimiter.LogRateLimiterSetting{RequestCount: 100})
 		e := &LMLogIngest{
-			client:      test.fields.client,
-			url:         test.fields.url,
-			auth:        test.fields.auth,
+			client:      ts.Client(),
+			url:         ts.URL,
+			auth:        utils.AuthParams{},
 			rateLimiter: rateLimiter,
+			batch:       &logsBatch{enabled: true, interval: 1 * time.Second, lock: &sync.Mutex{}},
 		}
-		payload := translator.ConvertToLMLogInput(test.args.log, time.Now().String(), test.args.resourceId, test.args.metadata)
-		err := e.SendLogs(context.Background(), payload)
-		if err == nil {
-			t.Errorf("SendLogs() expected error but got = %v", err)
-			return
-		}
+
+		message := "This is test message"
+		resourceId := map[string]interface{}{"test": "resource"}
+		metadata := map[string]interface{}{"test": "metadata"}
+
+		payload := translator.ConvertToLMLogInput(message, time.Now().String(), resourceId, metadata)
+		_, err := e.SendLogs(context.Background(), []model.LogInput{payload})
+		assert.NoError(t, err)
 	})
-	cleanupLMEnv()
-}
-
-func TestSendLogsBatch(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := utils.Response{
-			Success: true,
-			Message: "Logs exported successfully!!",
-		}
-		body, _ := json.Marshal(response)
-		w.Write(body)
-	}))
-
-	type args struct {
-		log        string
-		resourceId map[string]interface{}
-		metadata   map[string]interface{}
-	}
-
-	type fields struct {
-		client *http.Client
-		url    string
-		auth   utils.AuthParams
-	}
-
-	test := struct {
-		name   string
-		fields fields
-		args   args
-	}{
-		name: "Test log export with batching",
-		fields: fields{
-			client: ts.Client(),
-			url:    ts.URL,
-			auth:   utils.AuthParams{},
-		},
-		args: args{
-			log:        "This is test batch message",
-			resourceId: map[string]interface{}{"test": "resource"},
-			metadata:   map[string]interface{}{"test": "metadata"},
-		},
-	}
-
-	t.Run(test.name, func(t *testing.T) {
-		setLMEnv()
-		rateLimiter, _ := rateLimiter.NewLogRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 100})
-		e := &LMLogIngest{
-			client:      test.fields.client,
-			url:         test.fields.url,
-			auth:        test.fields.auth,
-			batch:       true,
-			interval:    1 * time.Second,
-			rateLimiter: rateLimiter,
-		}
-		payload := translator.ConvertToLMLogInput(test.args.log, time.Now().String(), test.args.resourceId, test.args.metadata)
-		err := e.SendLogs(context.Background(), payload)
-		if err != nil {
-			t.Errorf("SendLogs() error = %v", err)
-			return
-		}
-	})
-	cleanupLMEnv()
 }
 
 func TestPushToBatch(t *testing.T) {
-	logInput := model.LogInput{
-		Message:    "This is 1st message",
-		ResourceID: map[string]interface{}{"test": "resource"},
-		Metadata:   map[string]interface{}{"test": "metadata"},
-		//Timestamp:  "",
-	}
-	before := len(logBatch)
-	pushToBatch(logInput)
-	after := len(logBatch)
-	if after != (before + 1) {
-		t.Errorf("AddRequest() error = %s", "unable to add new request to cache")
-		return
-	}
-	logBatch = nil
-}
+	t.Run("should add log message to batch", func(t *testing.T) {
 
-func TestCreateRestLogsBody(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := utils.Response{
-			Success: true,
-			Message: "Logs exported successfully!!",
+		logInput := model.LogInput{
+			Message:    "This is 1st message",
+			ResourceID: map[string]interface{}{"test": "resource"},
+			Metadata:   map[string]interface{}{"test": "metadata"},
 		}
-		body, _ := json.Marshal(response)
-		w.Write(body)
-	}))
-	e := &LMLogIngest{
-		client: ts.Client(),
-		url:    ts.URL,
-	}
 
-	logInput1 := model.LogInput{
-		Message:    "This is 1st message",
-		ResourceID: map[string]interface{}{"test": "resource"},
-		Metadata:   map[string]interface{}{"test": "metadata"},
-		//Timestamp:  "",
-	}
-	logInput2 := model.LogInput{
-		Message:    "This is 2nd message",
-		ResourceID: map[string]interface{}{"test": "resource"},
-		Metadata:   map[string]interface{}{"test": "metadata"},
-		//Timestamp:  "",
-	}
-	logInput3 := model.LogInput{
-		Message:    "This is 3rd message",
-		ResourceID: map[string]interface{}{"test": "resource"},
-		Metadata:   map[string]interface{}{"test": "metadata"},
-		//Timestamp:  "",
-	}
-	logBatch = append(logBatch, logInput1, logInput2, logInput3)
+		logIngest := LMLogIngest{batch: NewLogBatch()}
 
-	body := e.CreateRequestBody()
-	if len(body.LogBodyList) == 0 {
-		t.Errorf("CreateRequestBody() Logs error = unable to create log request body")
-		return
-	}
+		req, err := buildLogRequest(context.Background(), []model.LogInput{logInput})
+		assert.NoError(t, err)
+
+		before := len(logIngest.batch.data)
+
+		logIngest.batch.pushToBatch(req)
+
+		after := len(logIngest.batch.data)
+
+		assert.Equal(t, before+1, after)
+	})
 }
 
-func setLMEnv() {
-	os.Setenv("LOGICMONITOR_ACCOUNT", "testenv")
-	os.Setenv("LOGICMONITOR_ACCESS_ID", "weryuifsjkf")
-	os.Setenv("LOGICMONITOR_ACCESS_KEY", "@dfsd4FDf999999FDE")
-}
+func TestCombineBatchedLogRequests(t *testing.T) {
+	t.Run("should merge the log requests", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			response := utils.Response{
+				Success: true,
+				Message: "Logs exported successfully!!",
+			}
+			body, _ := json.Marshal(response)
+			w.Write(body)
+		}))
+		logIngest := &LMLogIngest{
+			client: ts.Client(),
+			url:    ts.URL,
+			batch:  NewLogBatch(),
+		}
 
-func cleanupLMEnv() {
-	os.Unsetenv("LOGICMONITOR_ACCOUNT")
-	os.Unsetenv("LOGICMONITOR_ACCESS_ID")
-	os.Unsetenv("LOGICMONITOR_ACCESS_KEY")
+		logInput1 := model.LogInput{
+			Message:    "This is 1st message",
+			ResourceID: map[string]interface{}{"test": "resource"},
+			Metadata:   map[string]interface{}{"test": "metadata"},
+		}
+		logInput2 := model.LogInput{
+			Message:    "This is 2nd message",
+			ResourceID: map[string]interface{}{"test": "resource"},
+			Metadata:   map[string]interface{}{"test": "metadata"},
+		}
+		logInput3 := model.LogInput{
+			Message:    "This is 3rd message",
+			ResourceID: map[string]interface{}{"test": "resource"},
+			Metadata:   map[string]interface{}{"test": "metadata"},
+		}
+
+		req, err := buildLogRequest(context.Background(), []model.LogInput{logInput1, logInput2, logInput3})
+		assert.NoError(t, err)
+
+		logIngest.batch.pushToBatch(req)
+
+		combinedReq := logIngest.batch.combineBatchedLogRequests()
+		assert.Equal(t, 3, len(combinedReq.Payload))
+	})
 }
 
 func BenchmarkSendLogs(b *testing.B) {
@@ -368,7 +217,7 @@ func BenchmarkSendLogs(b *testing.B) {
 	defer cleanupLMEnv()
 
 	for i := 0; i < b.N; i++ {
-		rateLimiter, _ := rateLimiter.NewLogRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 350})
+		rateLimiter, _ := rateLimiter.NewLogRateLimiter(rateLimiter.LogRateLimiterSetting{RequestCount: 350})
 		e := &LMLogIngest{
 			client:      test.fields.client,
 			url:         test.fields.url,
@@ -376,7 +225,7 @@ func BenchmarkSendLogs(b *testing.B) {
 			rateLimiter: rateLimiter,
 		}
 		payload := translator.ConvertToLMLogInput(test.args.log, time.Now().String(), test.args.resourceId, test.args.metadata)
-		err := e.SendLogs(context.Background(), payload)
+		_, err := e.SendLogs(context.Background(), []model.LogInput{payload})
 		if err != nil {
 			fmt.Print(err)
 			return
@@ -395,7 +244,7 @@ func TestBuildPayload(t *testing.T) {
 	tests := []struct {
 		name            string
 		args            args
-		expectedPayload model.LogPayload
+		expectedPayload []model.LogPayload
 	}{
 		{
 			name: "log message value in string format",
@@ -405,11 +254,13 @@ func TestBuildPayload(t *testing.T) {
 				resourceId: map[string]interface{}{"host.name": "test"},
 				metadata:   map[string]interface{}{"cloud.provider": "aws"},
 			},
-			expectedPayload: map[string]interface{}{
-				lmLogsMessageKey: "This is test batch message",
-				resourceIDKey:    map[string]interface{}{"host.name": "test"},
-				timestampKey:     "04:33:37.4203915 +0000 UTC",
-				"cloud.provider": "aws",
+			expectedPayload: []model.LogPayload{
+				{
+					lmLogsMessageKey: "This is test batch message",
+					resourceIDKey:    map[string]interface{}{"host.name": "test"},
+					timestampKey:     "04:33:37.4203915 +0000 UTC",
+					"cloud.provider": "aws",
+				},
 			},
 		},
 		{
@@ -420,14 +271,16 @@ func TestBuildPayload(t *testing.T) {
 				resourceId: map[string]interface{}{"host.name": "test"},
 				metadata:   map[string]interface{}{"cloud.provider": "azure"},
 			},
-			expectedPayload: map[string]interface{}{
-				lmLogsMessageKey: "An account failed to log on.",
-				resourceIDKey:    map[string]interface{}{"host.name": "test"},
-				timestampKey:     "04:33:37.4203915 +0000 UTC",
-				"cloud.provider": "azure",
-				"channel":        "Security",
-				"computer":       "OtelDemoDevice",
-				"details":        map[string]interface{}{"Account For Which Logon Failed": map[string]interface{}{"Account Domain": "OTELDEMODEVICE", "Account Name": "Administrator Security", "ID": "S-1-0-0"}},
+			expectedPayload: []model.LogPayload{
+				{
+					lmLogsMessageKey: "An account failed to log on.",
+					resourceIDKey:    map[string]interface{}{"host.name": "test"},
+					timestampKey:     "04:33:37.4203915 +0000 UTC",
+					"cloud.provider": "azure",
+					"channel":        "Security",
+					"computer":       "OtelDemoDevice",
+					"details":        map[string]interface{}{"Account For Which Logon Failed": map[string]interface{}{"Account Domain": "OTELDEMODEVICE", "Account Name": "Administrator Security", "ID": "S-1-0-0"}},
+				},
 			},
 		},
 		{
@@ -445,17 +298,19 @@ func TestBuildPayload(t *testing.T) {
 					"message":   "Executing 'Functions.ConnectDB' (Reason='This function was programmatically called via the host APIs.",
 				}},
 			},
-			expectedPayload: map[string]interface{}{
-				lmLogsMessageKey: "Executing 'Functions.ConnectDB' (Reason='This function was programmatically called via the host APIs.",
-				resourceIDKey:    map[string]interface{}{"host.name": "test"},
-				timestampKey:     "04:33:37.4203915 +0000 UTC",
-				"azure.category": "FunctionAppLogs",
-				"azure.properties": map[string]interface{}{
-					"appName":   "adityadotnet",
-					"category":  "Function.ConnectDB",
-					"eventId":   1,
-					"eventName": "FunctionStarted",
-					"level":     "Information",
+			expectedPayload: []model.LogPayload{
+				{
+					lmLogsMessageKey: "Executing 'Functions.ConnectDB' (Reason='This function was programmatically called via the host APIs.",
+					resourceIDKey:    map[string]interface{}{"host.name": "test"},
+					timestampKey:     "04:33:37.4203915 +0000 UTC",
+					"azure.category": "FunctionAppLogs",
+					"azure.properties": map[string]interface{}{
+						"appName":   "adityadotnet",
+						"category":  "Function.ConnectDB",
+						"eventId":   1,
+						"eventName": "FunctionStarted",
+						"level":     "Information",
+					},
 				},
 			},
 		},
@@ -464,8 +319,20 @@ func TestBuildPayload(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			logInput := translator.ConvertToLMLogInput(tt.args.log, tt.args.timestamp, tt.args.resourceId, tt.args.metadata)
-			payload := buildPayload(logInput)
+			payload := buildLogPayload([]model.LogInput{logInput})
 			assert.Equal(t, tt.expectedPayload, payload)
 		})
 	}
+}
+
+func setLMEnv() {
+	os.Setenv("LOGICMONITOR_ACCOUNT", "testenv")
+	os.Setenv("LOGICMONITOR_ACCESS_ID", "weryuifsjkf")
+	os.Setenv("LOGICMONITOR_ACCESS_KEY", "@dfsd4FDf999999FDE")
+}
+
+func cleanupLMEnv() {
+	os.Unsetenv("LOGICMONITOR_ACCOUNT")
+	os.Unsetenv("LOGICMONITOR_ACCESS_ID")
+	os.Unsetenv("LOGICMONITOR_ACCESS_KEY")
 }

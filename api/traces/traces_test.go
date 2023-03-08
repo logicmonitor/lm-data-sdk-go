@@ -6,11 +6,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/logicmonitor/lm-data-sdk-go/model"
 	rateLimiter "github.com/logicmonitor/lm-data-sdk-go/pkg/ratelimiter"
 	"github.com/logicmonitor/lm-data-sdk-go/utils"
+	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 )
@@ -27,60 +30,33 @@ var (
 )
 
 func TestNewLMTraceIngest(t *testing.T) {
-	type args struct {
-		option []Option
-	}
+	t.Run("should return Trace Ingest instance with default values", func(t *testing.T) {
+		setLMEnv()
+		defer cleanupLMEnv()
 
-	tests := []struct {
-		name                string
-		args                args
-		wantBatchingEnabled bool
-		wantInterval        time.Duration
-	}{
-		{
-			name: "New LMTraceIngest with Batching interval passed",
-			args: args{
-				option: []Option{
-					WithTraceBatchingInterval(5 * time.Second),
-				},
-			},
-			wantBatchingEnabled: true,
-			wantInterval:        5 * time.Second,
-		},
-		{
-			name: "New LMTraceIngest with Batching disabled",
-			args: args{
-				option: []Option{
-					WithTraceBatchingDisabled(),
-				},
-			},
-			wantBatchingEnabled: false,
-			wantInterval:        10 * time.Second,
-		},
-	}
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			setLMEnv()
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+		lli, err := NewLMTraceIngest(ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, true, lli.batch.enabled)
+		assert.Equal(t, defaultBatchingInterval, lli.batch.interval)
+		assert.Equal(t, true, lli.gzip)
+		assert.NotNil(t, lli.client)
+	})
 
-			lli, err := NewLMTraceIngest(ctx, tt.args.option...)
-			if err != nil {
-				t.Errorf("NewLMTraceIngest() error = %v", err)
-				return
-			}
-			if lli.interval != tt.wantInterval {
-				t.Errorf("NewLMTraceIngest() want batch interval = %s , got = %s", tt.wantInterval, lli.interval)
-				return
-			}
-			if lli.batch != tt.wantBatchingEnabled {
-				t.Errorf("NewLMTraceIngest() want batching enabled = %t , got = %t", tt.wantBatchingEnabled, lli.batch)
-				return
-			}
-		})
-	}
-	cleanupLMEnv()
+	t.Run("should return Trace Ingest instance with options applied", func(t *testing.T) {
+		setLMEnv()
+		defer cleanupLMEnv()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		lli, err := NewLMTraceIngest(ctx, WithTraceBatchingInterval(5*time.Second))
+		assert.NoError(t, err)
+		assert.Equal(t, true, lli.batch.enabled)
+		assert.Equal(t, 5*time.Second, lli.batch.interval)
+	})
 }
 
 func TestSendTraces(t *testing.T) {
@@ -93,198 +69,61 @@ func TestSendTraces(t *testing.T) {
 		w.Write(body)
 	}))
 
-	type args struct {
-		traceData ptrace.Traces
-	}
+	defer ts.Close()
 
-	type fields struct {
-		client *http.Client
-		url    string
-		auth   utils.AuthParams
-	}
-
-	test := struct {
-		name   string
-		fields fields
-		args   args
-	}{
-		name: "Test trace export without batching",
-		fields: fields{
-			client: ts.Client(),
-			url:    ts.URL,
-			auth:   utils.AuthParams{},
-		},
-		args: args{
-			traceData: createTraceData(),
-		},
-	}
-
-	t.Run(test.name, func(t *testing.T) {
+	t.Run("send traces without batching", func(t *testing.T) {
 		setLMEnv()
-		rateLimiter, _ := rateLimiter.NewTraceRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 10})
+		defer cleanupLMEnv()
+
+		rateLimiter, _ := rateLimiter.NewLogRateLimiter(rateLimiter.LogRateLimiterSetting{RequestCount: 100})
+
 		e := &LMTraceIngest{
-			client:      test.fields.client,
-			url:         test.fields.url,
-			auth:        test.fields.auth,
+			client:      ts.Client(),
+			url:         ts.URL,
+			auth:        utils.AuthParams{},
 			rateLimiter: rateLimiter,
+			batch:       &traceBatch{enabled: false},
 		}
-		err := e.SendTraces(context.Background(), test.args.traceData)
-		if err != nil {
-			t.Errorf("SendTraces() error = %v", err)
-			return
-		}
+
+		_, err := e.SendTraces(context.Background(), createTraceData())
+		assert.NoError(t, err)
 	})
-	cleanupLMEnv()
-}
 
-func TestSendTracesError(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := utils.Response{
-			Success: false,
-			Message: "Connection Timeout!!",
-		}
-		body, _ := json.Marshal(response)
-		w.WriteHeader(http.StatusBadGateway)
-		w.Write(body)
-	}))
-
-	type args struct {
-		traceData ptrace.Traces
-	}
-
-	type fields struct {
-		client *http.Client
-		url    string
-		auth   utils.AuthParams
-	}
-
-	test := struct {
-		name   string
-		fields fields
-		args   args
-	}{
-		name: "Test Connection Timeout",
-		fields: fields{
-			client: ts.Client(),
-			url:    ts.URL,
-			auth:   utils.AuthParams{},
-		},
-		args: args{
-			traceData: createTraceData(),
-		},
-	}
-
-	t.Run(test.name, func(t *testing.T) {
+	t.Run("send traces with batching enabled", func(t *testing.T) {
 		setLMEnv()
-		rateLimiter, _ := rateLimiter.NewTraceRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 100})
+		defer cleanupLMEnv()
+
+		rateLimiter, _ := rateLimiter.NewLogRateLimiter(rateLimiter.LogRateLimiterSetting{RequestCount: 100})
 		e := &LMTraceIngest{
-			client:      test.fields.client,
-			url:         test.fields.url,
-			auth:        test.fields.auth,
+			client:      ts.Client(),
+			url:         ts.URL,
+			auth:        utils.AuthParams{},
 			rateLimiter: rateLimiter,
+			batch:       &traceBatch{enabled: true, interval: 1 * time.Second, lock: &sync.Mutex{}, data: &LMTraceIngestRequest{TracesPayload: model.TracesPayload{TraceData: ptrace.NewTraces()}}},
 		}
-		err := e.SendTraces(context.Background(), test.args.traceData)
-		if err == nil {
-			t.Errorf("SendTraces() expected error but got = %v", err)
-			return
-		}
+		_, err := e.SendTraces(context.Background(), createTraceData())
+		assert.NoError(t, err)
 	})
-	cleanupLMEnv()
 }
 
-func TestSendTraceBatch(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := utils.Response{
-			Success: true,
-			Message: "Traces exported successfully!!",
-		}
-		body, _ := json.Marshal(response)
-		w.Write(body)
-	}))
+func TestPushToBatch(t *testing.T) {
+	t.Run("should add traces to batch", func(t *testing.T) {
 
-	type args struct {
-		traceData ptrace.Traces
-	}
+		traceIngest := LMTraceIngest{batch: NewTraceBatch()}
 
-	type fields struct {
-		client *http.Client
-		url    string
-		auth   utils.AuthParams
-	}
+		testData := createTraceData()
 
-	test := struct {
-		name   string
-		fields fields
-		args   args
-	}{
-		name: "Test traces export with batching",
-		fields: fields{
-			client: ts.Client(),
-			url:    ts.URL,
-			auth:   utils.AuthParams{},
-		},
-		args: args{
-			traceData: createTraceData(),
-		},
-	}
+		req, err := buildTracesRequest(context.Background(), createTraceData())
+		assert.NoError(t, err)
 
-	t.Run(test.name, func(t *testing.T) {
-		setLMEnv()
-		rateLimiter, _ := rateLimiter.NewTraceRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 100})
-		e := &LMTraceIngest{
-			client:      test.fields.client,
-			url:         test.fields.url,
-			auth:        test.fields.auth,
-			batch:       true,
-			interval:    1 * time.Second,
-			rateLimiter: rateLimiter,
-		}
-		err := e.SendTraces(context.Background(), test.args.traceData)
-		if err != nil {
-			t.Errorf("SendTraces() error = %v", err)
-			return
-		}
+		before := traceIngest.batch.data.TracesPayload.TraceData.SpanCount()
+
+		traceIngest.batch.pushToBatch(req)
+
+		expectedSpanCount := before + testData.SpanCount()
+
+		assert.Equal(t, expectedSpanCount, traceIngest.batch.data.TracesPayload.TraceData.SpanCount())
 	})
-	cleanupLMEnv()
-}
-
-func TestAddRequest(t *testing.T) {
-	initializeTraceRequest()
-	before := traceBatch.SpanCount
-	traceInput := createTraceData()
-	addRequest(traceInput)
-	after := traceBatch.SpanCount
-	if after != (before + 1) {
-		t.Errorf("AddRequest() error = %s", "unable to add new request to cache")
-		return
-	}
-}
-
-func TestCreateTraceBody(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := utils.Response{
-			Success: true,
-			Message: "Traces exported successfully!!",
-		}
-		body, _ := json.Marshal(response)
-		w.Write(body)
-	}))
-	e := &LMTraceIngest{
-		client: ts.Client(),
-		url:    ts.URL,
-	}
-
-	initializeTraceRequest()
-	traceInput1 := createTraceData()
-	addRequest(traceInput1)
-	traceInput2 := createTraceData()
-	addRequest(traceInput2)
-
-	body := e.CreateRequestBody()
-	if body.TracePayload.SpanCount == 0 {
-		t.Errorf("CreateRequestBody() Traces error = unable to create traces request body")
-		return
-	}
 }
 
 func setLMEnv() {

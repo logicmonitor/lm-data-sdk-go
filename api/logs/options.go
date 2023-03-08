@@ -7,12 +7,13 @@ import (
 	"github.com/logicmonitor/lm-data-sdk-go/utils"
 )
 
+// LMLogIngest configuration options
 type Option func(*LMLogIngest) error
 
-// WithLogBatchingInterval is used for passing batching time interval for logs.
+// WithLogBatchingInterval is used for configuring batching time interval for logs.
 func WithLogBatchingInterval(batchingInterval time.Duration) Option {
 	return func(lli *LMLogIngest) error {
-		lli.interval = batchingInterval
+		lli.batch.interval = batchingInterval
 		return nil
 	}
 }
@@ -20,7 +21,7 @@ func WithLogBatchingInterval(batchingInterval time.Duration) Option {
 // WithLogBatchingDisabled is used for disabling log batching.
 func WithLogBatchingDisabled() Option {
 	return func(lli *LMLogIngest) error {
-		lli.batch = false
+		lli.batch.enabled = false
 		return nil
 	}
 }
@@ -64,4 +65,17 @@ func WithEndpoint(endpoint string) Option {
 		lli.url = endpoint
 		return nil
 	}
+}
+
+type SendLogsOptionalParameters struct {
+	Headers map[string]string
+}
+
+func NewSendLogOptionalParameters() *SendLogsOptionalParameters {
+	return &SendLogsOptionalParameters{}
+}
+
+func (s *SendLogsOptionalParameters) WithHeaders(headers map[string]string) *SendLogsOptionalParameters {
+	s.Headers = headers
+	return s
 }

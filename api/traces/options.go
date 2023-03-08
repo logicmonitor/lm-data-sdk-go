@@ -12,7 +12,7 @@ type Option func(*LMTraceIngest) error
 // WithTraceBatchingInterval is used for passing batch time interval.
 func WithTraceBatchingInterval(batchingInterval time.Duration) Option {
 	return func(lti *LMTraceIngest) error {
-		lti.interval = batchingInterval
+		lti.batch.interval = batchingInterval
 		return nil
 	}
 }
@@ -20,7 +20,7 @@ func WithTraceBatchingInterval(batchingInterval time.Duration) Option {
 // WithTraceBatchingDisabled is used for disabling Trace batching.
 func WithTraceBatchingDisabled() Option {
 	return func(lti *LMTraceIngest) error {
-		lti.batch = false
+		lti.batch.enabled = false
 		return nil
 	}
 }
@@ -43,9 +43,11 @@ func WithGzipCompression(gzip bool) Option {
 }
 
 // WithRateLimit is used to limit the Trace request count per minute
-func WithRateLimit(requestCount int) Option {
+func WithRateLimit(requestCount int, spanCount int, spanCountPerRequest int) Option {
 	return func(lti *LMTraceIngest) error {
 		lti.rateLimiterSetting.RequestCount = requestCount
+		lti.rateLimiterSetting.SpanCount = spanCount
+		lti.rateLimiterSetting.SpanCountPerRequest = spanCountPerRequest
 		return nil
 	}
 }
@@ -64,4 +66,11 @@ func WithEndpoint(endpoint string) Option {
 		lti.url = endpoint
 		return nil
 	}
+}
+
+type SendTracesOptionalParameters struct {
+}
+
+func NewSendTracesOptionalParameters() *SendTracesOptionalParameters {
+	return &SendTracesOptionalParameters{}
 }

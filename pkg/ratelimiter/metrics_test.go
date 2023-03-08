@@ -9,77 +9,78 @@ import (
 )
 
 func TestNewMetricsRateLimiter(t *testing.T) {
-	setting := RateLimiterSetting{
+	setting := MetricsRateLimiterSetting{
 		RequestCount: 100,
 	}
 	metricsRateLimiter, err := NewMetricsRateLimiter(setting)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(setting.RequestCount), metricsRateLimiter.maxCount)
-	assert.Equal(t, uint64(0), metricsRateLimiter.metricRequestCount)
+	assert.Equal(t, uint64(0), metricsRateLimiter.requestCount)
 }
 
 func TestNewMetricsRateLimiterDefaultRequestCount(t *testing.T) {
-	setting := RateLimiterSetting{}
+	setting := MetricsRateLimiterSetting{}
 	metricsRateLimiter, err := NewMetricsRateLimiter(setting)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(defaultRateLimitLogs), metricsRateLimiter.maxCount)
-	assert.Equal(t, uint64(0), metricsRateLimiter.metricRequestCount)
+	assert.Equal(t, uint64(0), metricsRateLimiter.requestCount)
 }
 
 func TestIncRequestCount_Metrics(t *testing.T) {
-	setting := RateLimiterSetting{
+	setting := MetricsRateLimiterSetting{
 		RequestCount: 100,
 	}
 	metricsRateLimiter, err := NewMetricsRateLimiter(setting)
 	assert.NoError(t, err)
-	metricsRequestCountBeforeInc := metricsRateLimiter.metricRequestCount
+	metricsRequestCountBeforeInc := metricsRateLimiter.requestCount
 	metricsRateLimiter.IncRequestCount()
-	metricsRequestCountAfterInc := metricsRateLimiter.metricRequestCount
+	metricsRequestCountAfterInc := metricsRateLimiter.requestCount
 	assert.Equal(t, metricsRequestCountBeforeInc+1, metricsRequestCountAfterInc)
 }
 
 func TestResetRequestCount_Metrics(t *testing.T) {
-	setting := RateLimiterSetting{
+	setting := MetricsRateLimiterSetting{
 		RequestCount: 100,
 	}
 	metricsRateLimiter, err := NewMetricsRateLimiter(setting)
 	assert.NoError(t, err)
 	metricsRateLimiter.ResetRequestCount()
-	assert.Equal(t, uint64(0), metricsRateLimiter.metricRequestCount)
+	assert.Equal(t, uint64(0), metricsRateLimiter.requestCount)
 }
 
 func TestAcquire_Metrics(t *testing.T) {
-	setting := RateLimiterSetting{
-		RequestCount: 1,
-	}
-	metricsRateLimiter, err := NewMetricsRateLimiter(setting)
-	assert.NoError(t, err)
+	t.Run("should return error when span count in request crosses maximum allowed", func(t *testing.T) {
+		setting := MetricsRateLimiterSetting{
+			RequestCount: 1,
+		}
+		metricsRateLimiter, err := NewMetricsRateLimiter(setting)
+		assert.NoError(t, err)
 
-	// Should allow 1 request
-	ok, err := metricsRateLimiter.Acquire()
-	assert.Equal(t, true, ok)
-	assert.NoError(t, err)
+		// Should allow 1 request
+		ok, err := metricsRateLimiter.Acquire(MetricsPaylaodMetadata{})
+		assert.Equal(t, true, ok)
+		assert.NoError(t, err)
 
-	// Should drop the second request as quota is exhausted
-	ok, err = metricsRateLimiter.Acquire()
-	assert.Equal(t, false, ok)
-	assert.Error(t, err)
+		// Should drop the second request as quota is exhausted
+		ok, err = metricsRateLimiter.Acquire(MetricsPaylaodMetadata{})
+		assert.Equal(t, false, ok)
+		assert.Error(t, err)
+	})
+
+	t.Run("should return error when shutdown is called", func(t *testing.T) {
+		setting := MetricsRateLimiterSetting{
+			RequestCount: 100,
+		}
+		metricsRateLimiter, err := NewMetricsRateLimiter(setting)
+		assert.NoError(t, err)
+		metricsRateLimiter.Shutdown(context.Background())
+		ok, err := metricsRateLimiter.Acquire(MetricsPaylaodMetadata{})
+		assert.Equal(t, false, ok)
+		assert.Error(t, err)
+	})
 }
-
-func TestAcquireAfterShutdown_Metrics(t *testing.T) {
-	setting := RateLimiterSetting{
-		RequestCount: 100,
-	}
-	metricsRateLimiter, err := NewMetricsRateLimiter(setting)
-	assert.NoError(t, err)
-	metricsRateLimiter.Shutdown(context.Background())
-	ok, err := metricsRateLimiter.Acquire()
-	assert.Equal(t, false, ok)
-	assert.Error(t, err)
-}
-
 func TestRun_Metrics(t *testing.T) {
-	setting := RateLimiterSetting{
+	setting := MetricsRateLimiterSetting{
 		RequestCount: 100,
 	}
 	metricsRateLimiter, err := NewMetricsRateLimiter(setting)
@@ -90,6 +91,6 @@ func TestRun_Metrics(t *testing.T) {
 	go metricsRateLimiter.Run(ctx)
 	metricsRateLimiter.IncRequestCount()
 	time.Sleep(5 * time.Second)
-	assert.Equal(t, uint64(0), metricsRateLimiter.metricRequestCount)
+	assert.Equal(t, uint64(0), metricsRateLimiter.requestCount)
 	metricsRateLimiter.Shutdown(ctx)
 }

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/logicmonitor/lm-data-sdk-go/api/logs"
+	"github.com/logicmonitor/lm-data-sdk-go/model"
 	"github.com/logicmonitor/lm-data-sdk-go/utils"
 	"github.com/logicmonitor/lm-data-sdk-go/utils/translator"
 )
@@ -29,7 +30,7 @@ func main() {
 
 	fmt.Println("Sending log1....")
 	logInput := translator.ConvertToLMLogInput(logMessage, utils.NewTimestampFromTime(time.Now()).String(), resourceIDs, metadata)
-	err = lmLog.SendLogs(context.Background(), logInput)
+	_, err = lmLog.SendLogs(context.Background(), []model.LogInput{logInput})
 	if err != nil {
 		fmt.Println("Error in sending log: ", err)
 	}

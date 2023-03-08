@@ -2,7 +2,6 @@ package model
 
 import "go.opentelemetry.io/collector/pdata/ptrace"
 
-type TracesRequest struct {
+type TracesPayload struct {
 	TraceData ptrace.Traces
-	SpanCount int
 }

@@ -1,18 +1,18 @@
 package model
 
-import "time"
+import (
+	"github.com/google/uuid"
+)
 
-type DataPayload struct {
-	MetricBodyList           []MetricPayload
-	MetricResourceCreateList []MetricPayload
-	LogBodyList              []LogPayload
-	TracePayload             TracesRequest
-	UpdatePropertiesBody     UpdateProperties
-}
-
-type LMIngest interface {
-	BatchInterval() time.Duration
-	URI() string
-	CreateRequestBody() DataPayload
-	ExportData(body DataPayload, uri, method string) error
+type IngestResponse struct {
+	StatusCode  int    `json:"statusCode"`
+	Success     bool   `json:"success"`
+	Message     string `json:"message"`
+	Error       error  `json:"error"`
+	MultiStatus []struct {
+		Code  int    `json:"code"`
+		Error string `json:"error"`
+	} `json:"multiStatus"`
+	RequestID  uuid.UUID `json:"requestId"`
+	RetryAfter int       `json:"retryAfter"`
 }

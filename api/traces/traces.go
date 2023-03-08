@@ -2,15 +2,17 @@ package traces
 
 import (
 	"context"
-	"crypto/tls"
+	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/logicmonitor/lm-data-sdk-go/internal/client"
 	"github.com/logicmonitor/lm-data-sdk-go/model"
-	"github.com/logicmonitor/lm-data-sdk-go/pkg/batch"
 	rateLimiter "github.com/logicmonitor/lm-data-sdk-go/pkg/ratelimiter"
 	"github.com/logicmonitor/lm-data-sdk-go/utils"
 	"go.opentelemetry.io/collector/pdata/ptrace"
@@ -18,40 +20,46 @@ import (
 )
 
 const (
-	uri                     = "/api/v1/traces"
-	defaultBatchingInterval = 10 * time.Second
-)
-
-var (
-	traceBatch      *model.TracesRequest
-	traceBatchMutex sync.Mutex
+	otlpTraceIngestURI       = "/api/v1/traces"
+	defaultBatchingInterval  = 10 * time.Second
+	maxHTTPResponseReadBytes = 64 * 1024
+	headerRetryAfter         = "Retry-After"
 )
 
 type LMTraceIngest struct {
 	client             *http.Client
 	url                string
-	batch              bool
-	interval           time.Duration
 	auth               utils.AuthParams
 	gzip               bool
-	rateLimiterSetting rateLimiter.RateLimiterSetting
+	rateLimiterSetting rateLimiter.TraceRateLimiterSetting
 	rateLimiter        rateLimiter.RateLimiter
+	batch              *traceBatch
+}
+
+type LMTraceIngestRequest struct {
+	TracesPayload model.TracesPayload
+}
+
+type LMTraceIngestResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+type traceBatch struct {
+	enabled  bool
+	data     *LMTraceIngestRequest
+	interval time.Duration
+	lock     *sync.Mutex
 }
 
 // NewLMTraceIngest initializes LMTraceIngest
 func NewLMTraceIngest(ctx context.Context, opts ...Option) (*LMTraceIngest, error) {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: false, MinVersion: tls.VersionTLS12}
-	clientTransport := (http.RoundTripper)(transport)
-	client := http.Client{Transport: clientTransport, Timeout: 5 * time.Second}
-
 	lti := LMTraceIngest{
-		client:             &client,
-		batch:              true,
-		interval:           defaultBatchingInterval,
+		client:             client.Client(),
 		auth:               utils.AuthParams{},
 		gzip:               true,
-		rateLimiterSetting: rateLimiter.RateLimiterSetting{},
+		rateLimiterSetting: rateLimiter.TraceRateLimiterSetting{},
+		batch:              NewTraceBatch(),
 	}
 
 	for _, opt := range opts {
@@ -75,104 +83,188 @@ func NewLMTraceIngest(ctx context.Context, opts ...Option) (*LMTraceIngest, erro
 	}
 	go lti.rateLimiter.Run(ctx)
 
-	initializeTraceRequest()
-	if lti.batch {
-		go batch.CreateAndExportData(&lti)
+	if lti.batch.enabled {
+		go lti.processBatch(ctx)
 	}
 	return &lti, nil
 }
 
-// URI returns the endpoint/uri of trace ingest API
-func (lti *LMTraceIngest) URI() string {
-	return uri
+func NewTraceBatch() *traceBatch {
+	return &traceBatch{enabled: true, interval: defaultBatchingInterval, lock: &sync.Mutex{}, data: &LMTraceIngestRequest{TracesPayload: model.TracesPayload{TraceData: ptrace.NewTraces()}}}
 }
 
-// BatchInterval returns the time interval for batching
-func (lti LMTraceIngest) BatchInterval() time.Duration {
-	return lti.interval
+func (traceIngest *LMTraceIngest) processBatch(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.NewTicker(traceIngest.batch.batchInterval()).C:
+			req := traceIngest.batch.combineBatchedTraceRequests()
+			if req == nil {
+				return
+			}
+			_, err := traceIngest.export(req, traceIngest.uri(), http.MethodPost)
+			if err != nil {
+				log.Println(err)
+			}
+		}
+	}
+}
+
+// uri returns the endpoint/uri of trace ingest API
+func (lti *LMTraceIngest) uri() string {
+	return otlpTraceIngestURI
+}
+
+// batchInterval returns the time interval for batching
+func (batch *traceBatch) batchInterval() time.Duration {
+	return batch.interval
 }
 
 // SendTraces is the entry point for receiving trace data
-func (lti *LMTraceIngest) SendTraces(ctx context.Context, traceData ptrace.Traces) error {
-	if lti.batch {
-		addRequest(traceData)
-	} else {
-		traceBatch.TraceData = traceData
-		traceBatch.SpanCount = traceData.SpanCount()
-		traceDataPayload := model.DataPayload{
-			TracePayload: *traceBatch,
-		}
-
-		return lti.ExportData(traceDataPayload, uri, http.MethodPost)
+func (lti *LMTraceIngest) SendTraces(ctx context.Context, td ptrace.Traces, o ...SendTracesOptionalParameters) (*model.IngestResponse, error) {
+	req, err := buildTracesRequest(ctx, td, o...)
+	if err != nil {
+		return nil, err
 	}
-	return nil
+
+	if lti.batch.enabled {
+		lti.batch.pushToBatch(req)
+		return nil, nil
+	}
+	return lti.export(req, otlpTraceIngestURI, http.MethodPost)
 }
 
-func initializeTraceRequest() {
-	traceBatch = &model.TracesRequest{TraceData: ptrace.NewTraces()}
+func buildTracesRequest(ctx context.Context, td ptrace.Traces, o ...SendTracesOptionalParameters) (*LMTraceIngestRequest, error) {
+	tracesPayload := model.TracesPayload{
+		TraceData: td,
+	}
+
+	return &LMTraceIngestRequest{TracesPayload: tracesPayload}, nil
 }
 
-// addRequest adds incoming trace requests to traceBatch internal cache
-func addRequest(traceInput ptrace.Traces) {
-	traceBatchMutex.Lock()
-	defer traceBatchMutex.Unlock()
-	newSpanCount := traceInput.SpanCount()
-	if newSpanCount == 0 {
-		return
-	}
-
-	traceBatch.SpanCount += newSpanCount
-	traceInput.ResourceSpans().MoveAndAppendTo(traceBatch.TraceData.ResourceSpans())
+// pushToBatch adds incoming trace requests to traceBatch internal cache
+func (batch *traceBatch) pushToBatch(req *LMTraceIngestRequest) {
+	batch.lock.Lock()
+	defer batch.lock.Unlock()
+	req.TracesPayload.TraceData.ResourceSpans().MoveAndAppendTo(ptrace.ResourceSpansSlice(batch.data.TracesPayload.TraceData.ResourceSpans()))
 }
 
-func (lti *LMTraceIngest) CreateRequestBody() model.DataPayload {
-	traceBatchMutex.Lock()
-	defer traceBatchMutex.Unlock()
-	if traceBatch.SpanCount == 0 {
-		return model.DataPayload{}
+func (batch *traceBatch) combineBatchedTraceRequests() *LMTraceIngestRequest {
+	batch.lock.Lock()
+	defer batch.lock.Unlock()
+
+	if batch.data.TracesPayload.TraceData.SpanCount() == 0 {
+		return nil
 	}
-	payloadList := model.DataPayload{
-		TracePayload: *traceBatch,
-	}
+
+	req := &LMTraceIngestRequest{TracesPayload: batch.data.TracesPayload}
 
 	// flushing out trace batch
-	if lti.batch {
-		traceBatch.SpanCount = 0
-		traceBatch.TraceData = ptrace.NewTraces()
+	if batch.enabled {
+		batch.data.TracesPayload.TraceData = ptrace.NewTraces()
 	}
-	return payloadList
+	return req
 }
 
-// ExportData exports trace to the LM platform
-func (lti *LMTraceIngest) ExportData(payloadList model.DataPayload, uri, method string) error {
-	if payloadList.TracePayload.SpanCount != 0 {
-		headers := make(map[string]string)
-		headers["Content-Type"] = "application/x-protobuf"
+// export exports trace to the LM platform
+func (lti *LMTraceIngest) export(req *LMTraceIngestRequest, uri, method string) (*model.IngestResponse, error) {
+	if req.TracesPayload.TraceData.SpanCount() == 0 {
+		return nil, nil
+	}
+	headers := make(map[string]string)
+	headers["Content-Type"] = "application/x-protobuf"
 
-		traceData := payloadList.TracePayload.TraceData
-		tr := ptraceotlp.NewExportRequestFromTraces(traceData)
-		body, err := tr.MarshalProto()
-		if err != nil {
-			return err
-		}
+	traceData := req.TracesPayload.TraceData
+	tr := ptraceotlp.NewExportRequestFromTraces(traceData)
+	body, err := tr.MarshalProto()
+	if err != nil {
+		return nil, err
+	}
 
-		token := lti.auth.GetCredentials(method, lti.URI(), body)
-		cfg := client.RequestConfig{
-			Client:      lti.client,
-			RateLimiter: lti.rateLimiter,
-			Url:         lti.url,
-			Body:        body,
-			Uri:         lti.URI(),
-			Method:      method,
-			Token:       token,
-			Gzip:        lti.gzip,
-			Headers:     headers,
-		}
+	token := lti.auth.GetCredentials(method, lti.uri(), body)
+	cfg := client.RequestConfig{
+		Client:          lti.client,
+		RateLimiter:     lti.rateLimiter,
+		Url:             lti.url,
+		Body:            body,
+		Uri:             lti.uri(),
+		Method:          method,
+		Token:           token,
+		Gzip:            lti.gzip,
+		Headers:         headers,
+		PayloadMetadata: rateLimiter.TracePayloadMetadata{RequestSpanCount: uint64(req.TracesPayload.TraceData.SpanCount())},
+	}
 
-		_, err = client.MakeRequest(context.Background(), cfg)
-		if err != nil {
-			return fmt.Errorf("error while exporting traces : %v", err)
+	resp, err := client.DoRequest(context.Background(), cfg, handleTraceExportResponse)
+	if err != nil {
+		return resp, fmt.Errorf("error while exporting traces: %w", err)
+	}
+	return resp, nil
+}
+
+// handleLogsExportResponse handles the http response returned by LM platform
+func handleTraceExportResponse(ctx context.Context, resp *http.Response) (*model.IngestResponse, error) {
+	defer func() {
+		// Discard any remaining response body when we are done reading.
+		io.CopyN(io.Discard, resp.Body, maxHTTPResponseReadBytes) // nolint:errcheck
+		resp.Body.Close()
+	}()
+
+	if resp.StatusCode >= 200 && resp.StatusCode <= 299 {
+		// Request is successful.
+		return &model.IngestResponse{
+			StatusCode: resp.StatusCode,
+			Success:    true,
+		}, nil
+	}
+
+	respStatus := readResponse(resp)
+
+	// Format the error message. Use the status if it is present in the response.
+	var formattedErr error
+	if respStatus != nil {
+		formattedErr = fmt.Errorf(
+			"error exporting items, request to %s responded with HTTP Status Code %d, Message=%s",
+			resp.Request.URL, resp.StatusCode, respStatus.Message)
+	} else {
+		formattedErr = fmt.Errorf(
+			"error exporting items, request to %s responded with HTTP Status Code %d",
+			resp.Request.URL, resp.StatusCode)
+	}
+	retryAfter := 0
+	if val := resp.Header.Get(headerRetryAfter); val != "" {
+		if seconds, err2 := strconv.Atoi(val); err2 == nil {
+			retryAfter = seconds
 		}
 	}
-	return nil
+	return &model.IngestResponse{
+		StatusCode: resp.StatusCode,
+		Success:    false,
+		Error:      formattedErr,
+		RetryAfter: retryAfter,
+	}, nil
+}
+
+// Read the response and decode
+// Returns nil if the response is empty or cannot be decoded.
+func readResponse(resp *http.Response) *LMTraceIngestResponse {
+	var lmTraceIngestResponse *LMTraceIngestResponse
+	if resp.StatusCode >= 400 && resp.StatusCode <= 599 {
+		// Request failed. Read the body.
+		maxRead := resp.ContentLength
+		if maxRead == -1 || maxRead > maxHTTPResponseReadBytes {
+			maxRead = maxHTTPResponseReadBytes
+		}
+		respBytes := make([]byte, maxRead)
+		n, err := io.ReadFull(resp.Body, respBytes)
+		if err == nil && n > 0 {
+			lmTraceIngestResponse = &LMTraceIngestResponse{}
+			err = json.Unmarshal(respBytes, lmTraceIngestResponse)
+			if err != nil {
+				lmTraceIngestResponse = nil
+			}
+		}
+	}
+	return lmTraceIngestResponse
 }
