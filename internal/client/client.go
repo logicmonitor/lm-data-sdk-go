@@ -3,27 +3,38 @@ package client
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net/http"
+	"time"
 
+	"github.com/logicmonitor/lm-data-sdk-go/model"
 	rateLimiter "github.com/logicmonitor/lm-data-sdk-go/pkg/ratelimiter"
 	"github.com/logicmonitor/lm-data-sdk-go/utils"
 )
 
 type RequestConfig struct {
-	Client      *http.Client
-	RateLimiter rateLimiter.RateLimiter
-	Url         string
-	Body        []byte
-	Uri         string
-	Method      string
-	Token       string
-	Gzip        bool
-	Headers     map[string]string
+	Client          *http.Client
+	RateLimiter     rateLimiter.RateLimiter
+	Url             string
+	Body            []byte
+	Uri             string
+	Method          string
+	Token           string
+	Gzip            bool
+	Headers         map[string]string
+	PayloadMetadata interface{}
 }
 
-// MakeRequest compresses the payload and exports it to LM Platform
-func MakeRequest(_ context.Context, reqConfig RequestConfig) (*utils.Response, error) {
+func Client() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: false, MinVersion: tls.VersionTLS12}
+	clientTransport := (http.RoundTripper)(transport)
+	return &http.Client{Transport: clientTransport, Timeout: 5 * time.Second}
+}
+
+// DoRequest compresses the payload and exports it to LM Platform
+func DoRequest(ctx context.Context, reqConfig RequestConfig, responseHandler func(context.Context, *http.Response) (*model.IngestResponse, error)) (*model.IngestResponse, error) {
 	if reqConfig.Token == "" {
 		return nil, fmt.Errorf("missing authentication token")
 	}
@@ -55,7 +66,7 @@ func MakeRequest(_ context.Context, reqConfig RequestConfig) (*utils.Response, e
 		req.Header.Set(key, value)
 	}
 
-	if acquire, err := reqConfig.RateLimiter.Acquire(); !acquire {
+	if acquire, err := reqConfig.RateLimiter.Acquire(reqConfig.PayloadMetadata); !acquire {
 		return nil, err
 	}
 
@@ -63,5 +74,5 @@ func MakeRequest(_ context.Context, reqConfig RequestConfig) (*utils.Response, e
 	if err != nil {
 		return nil, err
 	}
-	return utils.ConvertHTTPToIngestResponse(httpResp)
+	return responseHandler(ctx, httpResp)
 }

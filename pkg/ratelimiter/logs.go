@@ -13,43 +13,48 @@ const (
 
 // LogRateLimiter represents the RateLimiter config for logs
 type LogRateLimiter struct {
-	logRequestCount uint64
-	maxCount        uint64
-	ticker          *time.Ticker
-	shutdownCh      chan struct{}
+	requestCount uint64
+	maxCount     uint64
+	ticker       *time.Ticker
+	shutdownCh   chan struct{}
+}
+type LogRateLimiterSetting struct {
+	RequestCount int
+}
+type LogPaylaodMetadata struct {
 }
 
 // NewLogRateLimiter creates RateLimiter implementation for logs using RateLimiterSetting
-func NewLogRateLimiter(setting RateLimiterSetting) (*LogRateLimiter, error) {
+func NewLogRateLimiter(setting LogRateLimiterSetting) (*LogRateLimiter, error) {
 	if setting.RequestCount == 0 {
 		setting.RequestCount = defaultRateLimitLogs
 	}
 	return &LogRateLimiter{
-		logRequestCount: 0,
-		maxCount:        uint64(setting.RequestCount),
-		ticker:          time.NewTicker(time.Duration(1 * time.Minute)),
-		shutdownCh:      make(chan struct{}, 1),
+		requestCount: 0,
+		maxCount:     uint64(setting.RequestCount),
+		ticker:       time.NewTicker(time.Duration(1 * time.Minute)),
+		shutdownCh:   make(chan struct{}, 1),
 	}, nil
 }
 
 // IncRequestCount increaments the request count associated with logs by 1
 func (rateLimiter *LogRateLimiter) IncRequestCount() {
-	atomic.AddUint64(&rateLimiter.logRequestCount, 1)
+	atomic.AddUint64(&rateLimiter.requestCount, 1)
 }
 
 // ResetRequestCount resets the request count associated with logs to 0
 func (rateLimiter *LogRateLimiter) ResetRequestCount() {
-	atomic.StoreUint64(&rateLimiter.logRequestCount, 0)
+	atomic.StoreUint64(&rateLimiter.requestCount, 0)
 }
 
 // Acquire checks if the requests count for logs is reached to maximum allocated quota per minute.
-func (rateLimiter *LogRateLimiter) Acquire() (bool, error) {
+func (rateLimiter *LogRateLimiter) Acquire(payloadMetadata interface{}) (bool, error) {
 	for {
 		select {
 		case <-rateLimiter.shutdownCh:
 			return false, fmt.Errorf("shutdown is called")
 		default:
-			if rateLimiter.logRequestCount < rateLimiter.maxCount {
+			if rateLimiter.requestCount < rateLimiter.maxCount {
 				rateLimiter.IncRequestCount()
 				return true, nil
 			}

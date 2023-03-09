@@ -4,31 +4,31 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/logicmonitor/lm-data-sdk-go/model"
+	"github.com/logicmonitor/lm-data-sdk-go/utils"
 )
 
 type Option func(*LMTraceIngest) error
 
 // WithTraceBatchingInterval is used for passing batch time interval.
 func WithTraceBatchingInterval(batchingInterval time.Duration) Option {
-	return func(lti *LMTraceIngest) error {
-		lti.interval = batchingInterval
+	return func(traceIngest *LMTraceIngest) error {
+		traceIngest.batch.interval = batchingInterval
 		return nil
 	}
 }
 
 // WithTraceBatchingDisabled is used for disabling Trace batching.
 func WithTraceBatchingDisabled() Option {
-	return func(lti *LMTraceIngest) error {
-		lti.batch = false
+	return func(traceIngest *LMTraceIngest) error {
+		traceIngest.batch.enabled = false
 		return nil
 	}
 }
 
 // WithAuthentication is used for passing authentication token if not set in environment variables.
-func WithAuthentication(authProvider model.AuthProvider) Option {
-	return func(lti *LMTraceIngest) error {
-		lti.auth = authProvider
+func WithAuthentication(authProvider utils.AuthParams) Option {
+	return func(traceIngest *LMTraceIngest) error {
+		traceIngest.auth = authProvider
 		return nil
 	}
 }
@@ -36,32 +36,41 @@ func WithAuthentication(authProvider model.AuthProvider) Option {
 // WithGzipCompression can be used to enable/disable gzip compression of Trace payload
 // Note: By default, gzip compression is enabled.
 func WithGzipCompression(gzip bool) Option {
-	return func(lti *LMTraceIngest) error {
-		lti.gzip = gzip
+	return func(traceIngest *LMTraceIngest) error {
+		traceIngest.gzip = gzip
 		return nil
 	}
 }
 
 // WithRateLimit is used to limit the Trace request count per minute
-func WithRateLimit(requestCount int) Option {
-	return func(lti *LMTraceIngest) error {
-		lti.rateLimiterSetting.RequestCount = requestCount
+func WithRateLimit(requestCount int, spanCount int, spanCountPerRequest int) Option {
+	return func(traceIngest *LMTraceIngest) error {
+		traceIngest.rateLimiterSetting.RequestCount = requestCount
+		traceIngest.rateLimiterSetting.SpanCount = spanCount
+		traceIngest.rateLimiterSetting.SpanCountPerRequest = spanCountPerRequest
 		return nil
 	}
 }
 
 // WithHTTPClient is used to set HTTP client
 func WithHTTPClient(client *http.Client) Option {
-	return func(lti *LMTraceIngest) error {
-		lti.client = client
+	return func(traceIngest *LMTraceIngest) error {
+		traceIngest.client = client
 		return nil
 	}
 }
 
 // WithEndpoint is used to set Endpoint URL to export traces
 func WithEndpoint(endpoint string) Option {
-	return func(lti *LMTraceIngest) error {
-		lti.url = endpoint
+	return func(traceIngest *LMTraceIngest) error {
+		traceIngest.url = endpoint
 		return nil
 	}
+}
+
+type SendTracesOptionalParameters struct {
+}
+
+func NewSendTracesOptionalParameters() *SendTracesOptionalParameters {
+	return &SendTracesOptionalParameters{}
 }

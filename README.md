@@ -113,7 +113,7 @@ Initialize log ingest by calling `NewLMLogIngest`.
 
 For exporting logs to LM platform, 
 1. Convert data into LM Log format by calling `ConvertToLMLogInput(logMessage, timestamp string, resourceidMap, metadata map[string]string)`. 
-2. Invoke `SendLogs(ctx context.Context, logPayload model.LogInput)` by passing constucted LMLogInput as an input parameter.
+2. Invoke `SendLogs(ctx context.Context, logPayload []model.LogInput)` by passing constucted LMLogInput as an input parameter (multiple LogInput can also be passed).
 
 ```
 var options []logs.Option
@@ -127,7 +127,7 @@ if err != nil {
 	return
 }
 payload := translator.ConvertToLMLogInput(logMessage, utils.NewTimestampFromTime(time.Now()).String(), resourceMapperMap, logMetadataMap)
-err := lmLogClient.SendLogs(ctx, payload)
+err := lmLogClient.SendLogs(ctx, []model.LogInput{payload})
 if err != nil {
 	log.Error("error while exporting logs ", err)
 }

@@ -6,3 +6,5 @@ type LogInput struct {
 	Metadata   map[string]interface{}
 	Timestamp  string
 }
+
+type LogPayload map[string]interface{}

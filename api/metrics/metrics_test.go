@@ -1,515 +1,144 @@
 package metrics
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/logicmonitor/lm-data-sdk-go/model"
 	rateLimiter "github.com/logicmonitor/lm-data-sdk-go/pkg/ratelimiter"
 	"github.com/logicmonitor/lm-data-sdk-go/utils"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNewLMMetricIngest(t *testing.T) {
-	type args struct {
-		option []Option
-	}
+	t.Run("should return Metric Ingest instance with default values", func(t *testing.T) {
+		setLMEnv()
+		defer cleanupLMEnv()
 
-	tests := []struct {
-		name                string
-		args                args
-		wantBatchingEnabled bool
-		wantInterval        time.Duration
-	}{
-		{
-			name: "New LM Metric Ingest with Batching interval passed",
-			args: args{
-				option: []Option{
-					WithMetricBatchingInterval(5 * time.Second),
-				},
-			},
-			wantBatchingEnabled: true,
-			wantInterval:        5 * time.Second,
-		},
-		{
-			name: "New LM Metric Ingest with Batching disabled",
-			args: args{
-				option: []Option{
-					WithMetricBatchingDisabled(),
-				},
-			},
-			wantBatchingEnabled: false,
-			wantInterval:        10 * time.Second,
-		},
-	}
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			setEnv()
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-			lmi, err := NewLMMetricIngest(ctx, tt.args.option...)
-			if err != nil {
-				t.Errorf("NewLMMetricIngest() error = %v", err)
-				return
-			}
-			if lmi.interval != tt.wantInterval {
-				t.Errorf("NewLMMetricIngest() want batch interval = %s , got = %s", tt.wantInterval, lmi.interval)
-				return
-			}
-			if lmi.batch != tt.wantBatchingEnabled {
-				t.Errorf("NewLMMetricIngest() want batching enabled = %t , got = %t", tt.wantBatchingEnabled, lmi.batch)
-				return
-			}
-		})
-	}
-	cleanUp()
+		metricIngest, err := NewLMMetricIngest(ctx)
+		assert.NoError(t, err)
+		assert.Equal(t, true, metricIngest.batch.enabled)
+		assert.Equal(t, defaultBatchingInterval, metricIngest.batch.interval)
+		assert.Equal(t, true, metricIngest.gzip)
+		assert.NotNil(t, metricIngest.client)
+	})
+
+	t.Run("should return LogIngest instance with options applied", func(t *testing.T) {
+		setLMEnv()
+		defer cleanupLMEnv()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		metricIngest, err := NewLMMetricIngest(ctx, WithMetricBatchingInterval(5*time.Second))
+		assert.NoError(t, err)
+		assert.Equal(t, true, metricIngest.batch.enabled)
+		assert.Equal(t, 5*time.Second, metricIngest.batch.interval)
+	})
 }
 
 func TestSendMetrics(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := utils.Response{
+		response := LMMetricIngestResponse{
 			Success: true,
-			Message: "Metrics exported successfully!!",
+			Message: "Accepted",
 		}
-		body, _ := json.Marshal(response)
-		w.Write(body)
+		w.WriteHeader(http.StatusAccepted)
+		assert.NoError(t, json.NewEncoder(w).Encode(&response))
 	}))
 
-	type args struct {
-		rInput    model.ResourceInput
-		dsInput   model.DatasourceInput
-		instInput model.InstanceInput
-		dpInput   model.DataPointInput
-	}
+	defer ts.Close()
 
-	type fields struct {
-		client *http.Client
-		url    string
-		auth   model.AuthProvider
-	}
+	t.Run("send metrics without batching", func(t *testing.T) {
+		setLMEnv()
+		defer cleanupLMEnv()
 
-	rInput1, dsInput1, insInput1, dpInput1 := getInput()
+		rateLimiter, _ := rateLimiter.NewLogRateLimiter(rateLimiter.LogRateLimiterSetting{RequestCount: 100})
 
-	test := struct {
-		name   string
-		fields fields
-		args   args
-	}{
-		name: "Test metric export without batching",
-		fields: fields{
-			client: ts.Client(),
-			url:    ts.URL,
-			auth:   model.DefaultAuthenticator{},
-		},
-		args: args{
-			rInput:    rInput1,
-			dsInput:   dsInput1,
-			instInput: insInput1,
-			dpInput:   dpInput1,
-		},
-	}
-
-	t.Run(test.name, func(t *testing.T) {
-		setEnv()
-		rateLimiter, _ := rateLimiter.NewMetricsRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 100})
 		e := &LMMetricIngest{
-			client:      test.fields.client,
-			url:         test.fields.url,
-			auth:        test.fields.auth,
+			client:      ts.Client(),
+			url:         ts.URL,
+			auth:        utils.AuthParams{},
 			rateLimiter: rateLimiter,
+			batch:       &metricBatch{enabled: false},
 		}
-		err := e.SendMetrics(context.Background(), test.args.rInput, test.args.dsInput, test.args.instInput, test.args.dpInput)
-		if err != nil {
-			t.Errorf("SendMetrics() error = %v", err)
-			return
-		}
+
+		resInput1, dsInput1, insInput1, dpInput1 := getTestInput()
+
+		_, err := e.SendMetrics(context.Background(), resInput1, dsInput1, insInput1, dpInput1)
+		assert.NoError(t, err)
 	})
-	cleanUp()
-}
 
-func TestSendMetricsResCreate(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := utils.Response{
-			Success: true,
-			Message: "Metrics exported successfully!!",
-		}
-		body, _ := json.Marshal(response)
-		w.Write(body)
-	}))
+	t.Run("send logs with batching enabled", func(t *testing.T) {
+		setLMEnv()
+		defer cleanupLMEnv()
 
-	type args struct {
-		rInput    model.ResourceInput
-		dsInput   model.DatasourceInput
-		instInput model.InstanceInput
-		dpInput   model.DataPointInput
-	}
-
-	type fields struct {
-		client *http.Client
-		url    string
-		auth   model.AuthProvider
-	}
-
-	rInput1, dsInput1, insInput1, dpInput1 := getInputResCreate()
-
-	test := struct {
-		name   string
-		fields fields
-		args   args
-	}{
-		name: "Test metric export without batching",
-		fields: fields{
-			client: ts.Client(),
-			url:    ts.URL,
-			auth:   model.DefaultAuthenticator{},
-		},
-		args: args{
-			rInput:    rInput1,
-			dsInput:   dsInput1,
-			instInput: insInput1,
-			dpInput:   dpInput1,
-		},
-	}
-
-	t.Run(test.name, func(t *testing.T) {
-		setEnv()
-		rateLimiter, _ := rateLimiter.NewMetricsRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 100})
+		rateLimiter, _ := rateLimiter.NewLogRateLimiter(rateLimiter.LogRateLimiterSetting{RequestCount: 100})
 		e := &LMMetricIngest{
-			client:      test.fields.client,
-			url:         test.fields.url,
-			auth:        test.fields.auth,
+			client:      ts.Client(),
+			url:         ts.URL,
+			auth:        utils.AuthParams{},
 			rateLimiter: rateLimiter,
+			batch:       &metricBatch{enabled: true, interval: 1 * time.Second, lock: &sync.Mutex{}},
 		}
-		err := e.SendMetrics(context.Background(), test.args.rInput, test.args.dsInput, test.args.instInput, test.args.dpInput)
-		if err != nil {
-			t.Errorf("SendMetrics() error = %v", err)
-			return
-		}
+
+		resInput1, dsInput1, insInput1, dpInput1 := getTestInput()
+
+		_, err := e.SendMetrics(context.Background(), resInput1, dsInput1, insInput1, dpInput1)
+		assert.NoError(t, err)
 	})
-	cleanUp()
 }
+func TestPushToBatch(t *testing.T) {
+	t.Run("should add log message to batch", func(t *testing.T) {
 
-func TestSendMetricsError(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := utils.Response{
-			Success: false,
-			Message: "Connection Timeout!!",
+		resInput, dsInput, insInput, dpInput := getTestInput()
+		input := model.MetricsInput{
+			Resource:   resInput,
+			Datasource: dsInput,
+			Instance:   insInput,
+			DataPoint:  dpInput,
 		}
-		body, _ := json.Marshal(response)
-		w.WriteHeader(http.StatusBadGateway)
-		w.Write(body)
-	}))
+		req, err := buildMetricRequest(context.Background(), input)
+		assert.NoError(t, err)
 
-	type args struct {
-		rInput    model.ResourceInput
-		dsInput   model.DatasourceInput
-		instInput model.InstanceInput
-		dpInput   model.DataPointInput
-	}
+		metricIngest := LMMetricIngest{batch: NewMetricBatch()}
 
-	type fields struct {
-		client *http.Client
-		url    string
-		auth   model.AuthProvider
-	}
+		before := len(metricIngest.batch.data)
 
-	rInput1, dsInput1, insInput1, dpInput1 := getInput()
+		metricIngest.batch.pushToBatch(req)
 
-	test := struct {
-		name   string
-		fields fields
-		args   args
-	}{
-		name: "Test metric export error scenario",
-		fields: fields{
-			client: ts.Client(),
-			url:    ts.URL,
-			auth:   model.DefaultAuthenticator{},
-		},
-		args: args{
-			rInput:    rInput1,
-			dsInput:   dsInput1,
-			instInput: insInput1,
-			dpInput:   dpInput1,
-		},
-	}
+		after := len(metricIngest.batch.data)
 
-	t.Run(test.name, func(t *testing.T) {
-		setEnv()
-		rateLimiter, _ := rateLimiter.NewMetricsRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 100})
-		e := &LMMetricIngest{
-			client:      test.fields.client,
-			url:         test.fields.url,
-			auth:        test.fields.auth,
-			rateLimiter: rateLimiter,
-		}
-		err := e.SendMetrics(context.Background(), test.args.rInput, test.args.dsInput, test.args.instInput, test.args.dpInput)
-		if err == nil {
-			t.Errorf("SendMetrics() expect error but got error = %v", err)
-			return
-		}
+		assert.Equal(t, before+1, after)
 	})
-	cleanUp()
 }
-
-func TestSendMetricsBatch(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := utils.Response{
-			Success: true,
-			Message: "Metrics exported successfully!!",
-		}
-		body, _ := json.Marshal(response)
-		w.Write(body)
-	}))
-
-	type args struct {
-		rInput    model.ResourceInput
-		dsInput   model.DatasourceInput
-		instInput model.InstanceInput
-		dpInput   model.DataPointInput
-	}
-
-	type fields struct {
-		client *http.Client
-		url    string
-		auth   model.AuthProvider
-	}
-
-	rInput1, dsInput1, insInput1, dpInput1 := getInput()
-
-	test := struct {
-		name   string
-		fields fields
-		args   args
-	}{
-		name: "Test metric export with batching",
-		fields: fields{
-			client: ts.Client(),
-			url:    ts.URL,
-			auth:   model.DefaultAuthenticator{},
-		},
-		args: args{
-			rInput:    rInput1,
-			dsInput:   dsInput1,
-			instInput: insInput1,
-			dpInput:   dpInput1,
-		},
-	}
-
-	t.Run(test.name, func(t *testing.T) {
-		setEnv()
-		rateLimiter, _ := rateLimiter.NewMetricsRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 100})
-		prepareMetricsRequestCache()
-		e := &LMMetricIngest{
-			client:      test.fields.client,
-			url:         test.fields.url,
-			auth:        test.fields.auth,
-			batch:       true,
-			interval:    2 * time.Second,
-			rateLimiter: rateLimiter,
-		}
-		err := e.SendMetrics(context.Background(), test.args.rInput, test.args.dsInput, test.args.instInput, test.args.dpInput)
-		if err != nil {
-			t.Errorf("SendMetrics() error = %v", err)
-			return
-		}
+func TestCombineBatchedMetricsRequests(t *testing.T) {
+	t.Run("should merge the metrics requests", func(t *testing.T) {
+		metricBatch := getTestMetricsBatch()
+		combinedMetricsReq := metricBatch.combineBatchedMetricsRequests()
+		assert.NotNil(t, combinedMetricsReq)
 	})
-	cleanUp()
-}
-
-func TestAddRequest(t *testing.T) {
-	prepareMetricsRequestCache()
-	newReq := getSingleRequest()
-	before := len(metricBatch)
-	addRequest(newReq)
-	after := len(metricBatch)
-	if after != (before + 1) {
-		t.Errorf("AddRequest() error = %s", "unable to add new request to metrics cache")
-		return
-	}
-	metricBatch = nil
-}
-
-func TestMergeRequest(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := utils.Response{
-			Success: true,
-			Message: "Metrics exported successfully!!",
-		}
-		body, _ := json.Marshal(response)
-		w.Write(body)
-	}))
-	e := &LMMetricIngest{
-		client: ts.Client(),
-		url:    ts.URL,
-		auth:   model.DefaultAuthenticator{},
-		batch:  true,
-	}
-
-	prepareMetricsRequestCache()
-	body := e.CreateRequestBody()
-	if instArray, ok := instanceMap["GoSDK"]; ok {
-		if len(instArray) != 2 {
-			t.Errorf("MergeRequest() error = %s", "unable to merge request properly")
-			return
-		}
-	}
-	if body.MetricBodyList == nil {
-		t.Errorf("error while creating metric request body..")
-		return
-	}
-	metricBatch = nil
-}
-
-func getInput() (model.ResourceInput, model.DatasourceInput, model.InstanceInput, model.DataPointInput) {
-	rInput1 := model.ResourceInput{
-		ResourceName: "test-cart-service",
-		ResourceID:   map[string]string{"system.displayname": "test-cart-service"},
-	}
-
-	dsInput1 := model.DatasourceInput{
-		DataSourceName:  "GoSDK",
-		DataSourceGroup: "Sdk",
-	}
-
-	insInput1 := model.InstanceInput{
-		InstanceName:       "DataSDK",
-		InstanceProperties: map[string]string{"test": "datasdk"},
-	}
-
-	dpInput1 := model.DataPointInput{
-		DataPointName: "cpu",
-		DataPointType: "COUNTER",
-		Value:         map[string]string{fmt.Sprintf("%d", time.Now().Unix()): "124"},
-	}
-	return rInput1, dsInput1, insInput1, dpInput1
-}
-
-func getInputResCreate() (model.ResourceInput, model.DatasourceInput, model.InstanceInput, model.DataPointInput) {
-	rInput1 := model.ResourceInput{
-		ResourceName: "test-cart-service",
-		ResourceID:   map[string]string{"system.displayname": "test-cart-service"},
-		IsCreate:     true,
-	}
-
-	dsInput1 := model.DatasourceInput{
-		DataSourceName:  "GoSDK",
-		DataSourceGroup: "Sdk",
-	}
-
-	insInput1 := model.InstanceInput{
-		InstanceName:       "DataSDK",
-		InstanceProperties: map[string]string{"test": "datasdk"},
-	}
-
-	dpInput1 := model.DataPointInput{
-		DataPointName: "cpu",
-		DataPointType: "COUNTER",
-		Value:         map[string]string{fmt.Sprintf("%d", time.Now().Unix()): "124"},
-	}
-	return rInput1, dsInput1, insInput1, dpInput1
-}
-
-func getSingleRequest() model.MetricsInput {
-	rInput1, dsInput1, insInput1, dpInput1 := getInput()
-	mInput := model.MetricsInput{
-		Resource:   rInput1,
-		Datasource: dsInput1,
-		Instance:   insInput1,
-		DataPoint:  dpInput1,
-	}
-	return mInput
-}
-
-func prepareMetricsRequestCache() {
-	rInput := model.ResourceInput{
-		ResourceName: "test-cart-service",
-		ResourceID:   map[string]string{"system.displayname": "test-cart-service"},
-	}
-
-	dsInput := model.DatasourceInput{
-		DataSourceName:        "GoSDK",
-		DataSourceDisplayName: "GoSDK",
-		DataSourceGroup:       "Sdk",
-	}
-
-	insInput := model.InstanceInput{
-		InstanceName:       "TelemetrySDK",
-		InstanceProperties: map[string]string{"test": "telemetrysdk"},
-	}
-
-	dpInput := model.DataPointInput{
-		DataPointName:            "cpu",
-		DataPointType:            "GAUGE",
-		DataPointAggregationType: "SUM",
-		Value:                    map[string]string{fmt.Sprintf("%d", time.Now().Unix()): "124"},
-	}
-
-	mInput := model.MetricsInput{
-		Resource:   rInput,
-		Datasource: dsInput,
-		Instance:   insInput,
-		DataPoint:  dpInput,
-	}
-
-	rInput1 := model.ResourceInput{
-		ResourceName: "test-payment-service",
-		ResourceID:   map[string]string{"system.displayname": "test-cart-service"},
-		IsCreate:     true,
-	}
-
-	dsInput1 := model.DatasourceInput{
-		DataSourceName:        "GoSDK",
-		DataSourceDisplayName: "GoSDK",
-		DataSourceGroup:       "Sdk",
-	}
-
-	insInput1 := model.InstanceInput{
-		InstanceName:       "DataSDK",
-		InstanceProperties: map[string]string{"test": "datasdk"},
-	}
-
-	dpInput1 := model.DataPointInput{
-		DataPointName:            "memory",
-		DataPointType:            "COUNTER",
-		DataPointAggregationType: "SUM",
-		Value:                    map[string]string{fmt.Sprintf("%d", time.Now().Unix()): "124"},
-	}
-	mInput1 := model.MetricsInput{
-		Resource:   rInput1,
-		Datasource: dsInput1,
-		Instance:   insInput1,
-		DataPoint:  dpInput1,
-	}
-	dpInput2 := model.DataPointInput{
-		DataPointName:            "cpu",
-		DataPointType:            "COUNTER",
-		DataPointAggregationType: "SUM",
-		Value:                    map[string]string{fmt.Sprintf("%d", time.Now().Unix()): "14"},
-	}
-	mInput2 := model.MetricsInput{
-		Resource:   rInput1,
-		Datasource: dsInput1,
-		Instance:   insInput1,
-		DataPoint:  dpInput2,
-	}
-	metricBatch = append(metricBatch, mInput, mInput1, mInput2)
 }
 
 func TestUpdateResourceProperties(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := utils.Response{
+		response := LMMetricIngestResponse{
 			Success: true,
 			Message: "Resource properties updated successfully!!",
 		}
-		body, _ := json.Marshal(response)
-		w.Write(body)
+		assert.NoError(t, json.NewEncoder(w).Encode(&response))
 	}))
 
 	type args struct {
@@ -522,7 +151,7 @@ func TestUpdateResourceProperties(t *testing.T) {
 	type fields struct {
 		client      *http.Client
 		url         string
-		auth        model.AuthProvider
+		auth        utils.AuthParams
 		rateLimiter *rateLimiter.MetricsRateLimiter
 	}
 
@@ -535,7 +164,7 @@ func TestUpdateResourceProperties(t *testing.T) {
 		fields: fields{
 			client: ts.Client(),
 			url:    ts.URL,
-			auth:   model.DefaultAuthenticator{},
+			auth:   utils.AuthParams{},
 		},
 		args: args{
 			resName: "TestResource",
@@ -546,31 +175,30 @@ func TestUpdateResourceProperties(t *testing.T) {
 	}
 
 	t.Run(test.name, func(t *testing.T) {
-		setEnv()
-		rateLimiter, _ := rateLimiter.NewMetricsRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 100})
+		setLMEnv()
+		rateLimiter, _ := rateLimiter.NewMetricsRateLimiter(rateLimiter.MetricsRateLimiterSetting{RequestCount: 100})
 		e := &LMMetricIngest{
 			client:      test.fields.client,
 			url:         test.fields.url,
 			auth:        test.fields.auth,
 			rateLimiter: rateLimiter,
 		}
-		err := e.UpdateResourceProperties(test.args.resName, test.args.rId, test.args.resProp, test.args.patch)
+		_, err := e.UpdateResourceProperties(test.args.resName, test.args.rId, test.args.resProp, test.args.patch)
 		if err != nil {
 			t.Errorf("UpdateResourceProperties() error = %v", err)
 			return
 		}
 	})
-	cleanUp()
+	cleanupLMEnv()
 }
 
 func TestUpdateResourcePropertiesValidation(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := utils.Response{
+		response := LMMetricIngestResponse{
 			Success: true,
 			Message: "Resource properties updated successfully!!",
 		}
-		body, _ := json.Marshal(response)
-		w.Write(body)
+		assert.NoError(t, json.NewEncoder(w).Encode(&response))
 	}))
 
 	type args struct {
@@ -583,7 +211,7 @@ func TestUpdateResourcePropertiesValidation(t *testing.T) {
 	type fields struct {
 		client *http.Client
 		url    string
-		auth   model.AuthProvider
+		auth   utils.AuthParams
 	}
 
 	test := struct {
@@ -595,7 +223,7 @@ func TestUpdateResourcePropertiesValidation(t *testing.T) {
 		fields: fields{
 			client: ts.Client(),
 			url:    ts.URL,
-			auth:   model.DefaultAuthenticator{},
+			auth:   utils.AuthParams{},
 		},
 		args: args{
 			resName: "Test",
@@ -606,92 +234,30 @@ func TestUpdateResourcePropertiesValidation(t *testing.T) {
 	}
 
 	t.Run(test.name, func(t *testing.T) {
-		setEnv()
-		rateLimiter, _ := rateLimiter.NewMetricsRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 100})
+		setLMEnv()
+		rateLimiter, _ := rateLimiter.NewMetricsRateLimiter(rateLimiter.MetricsRateLimiterSetting{RequestCount: 100})
 		e := &LMMetricIngest{
 			client:      test.fields.client,
 			url:         test.fields.url,
 			auth:        test.fields.auth,
 			rateLimiter: rateLimiter,
 		}
-		err := e.UpdateResourceProperties(test.args.resName, test.args.rId, test.args.resProp, test.args.patch)
+		_, err := e.UpdateResourceProperties(test.args.resName, test.args.rId, test.args.resProp, test.args.patch)
 		if err == nil {
 			t.Errorf("UpdateResourceProperties() expect error, but got error = nil")
 			return
 		}
 	})
-	cleanUp()
-}
-
-func TestUpdateResourcePropertiesError(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := utils.Response{
-			Success: false,
-			Message: "Error caught...",
-		}
-		body, _ := json.Marshal(response)
-		w.WriteHeader(http.StatusExpectationFailed)
-		w.Write(body)
-	}))
-
-	type args struct {
-		resName string
-		rId     map[string]string
-		resProp map[string]string
-		patch   bool
-	}
-
-	type fields struct {
-		client *http.Client
-		url    string
-		auth   model.DefaultAuthenticator
-	}
-
-	test := struct {
-		name   string
-		fields fields
-		args   args
-	}{
-		name: "Update resource properties",
-		fields: fields{
-			client: ts.Client(),
-			url:    ts.URL,
-			auth:   model.DefaultAuthenticator{},
-		},
-		args: args{
-			resName: "Test",
-			rId:     map[string]string{"system.displayname": "test-cart-service"},
-			resProp: map[string]string{"new": "updatedprop"},
-			patch:   true,
-		},
-	}
-
-	t.Run(test.name, func(t *testing.T) {
-		setEnv()
-		rateLimiter, _ := rateLimiter.NewMetricsRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 100})
-		e := &LMMetricIngest{
-			client:      test.fields.client,
-			url:         test.fields.url,
-			auth:        test.fields.auth,
-			rateLimiter: rateLimiter,
-		}
-		err := e.UpdateResourceProperties(test.args.resName, test.args.rId, test.args.resProp, test.args.patch)
-		if err == nil {
-			t.Errorf("UpdateResourceProperties() should generate error but error is nil")
-			return
-		}
-	})
-	cleanUp()
+	cleanupLMEnv()
 }
 
 func TestUpdateInstanceProperties(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := utils.Response{
+		response := LMMetricIngestResponse{
 			Success: true,
 			Message: "Instance properties updated successfully!!",
 		}
-		body, _ := json.Marshal(response)
-		w.Write(body)
+		assert.NoError(t, json.NewEncoder(w).Encode(&response))
 	}))
 
 	type args struct {
@@ -706,7 +272,7 @@ func TestUpdateInstanceProperties(t *testing.T) {
 	type fields struct {
 		client *http.Client
 		url    string
-		auth   model.AuthProvider
+		auth   utils.AuthParams
 	}
 
 	test := struct {
@@ -718,7 +284,7 @@ func TestUpdateInstanceProperties(t *testing.T) {
 		fields: fields{
 			client: ts.Client(),
 			url:    ts.URL,
-			auth:   model.DefaultAuthenticator{},
+			auth:   utils.AuthParams{},
 		},
 		args: args{
 			rId:           map[string]string{"system.displayname": "test-cart-service"},
@@ -731,32 +297,31 @@ func TestUpdateInstanceProperties(t *testing.T) {
 	}
 
 	t.Run(test.name, func(t *testing.T) {
-		setEnv()
-		rateLimiter, _ := rateLimiter.NewMetricsRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 100})
+		setLMEnv()
+		rateLimiter, _ := rateLimiter.NewMetricsRateLimiter(rateLimiter.MetricsRateLimiterSetting{RequestCount: 100})
 		e := &LMMetricIngest{
 			client:      test.fields.client,
 			url:         test.fields.url,
 			auth:        test.fields.auth,
 			rateLimiter: rateLimiter,
 		}
-		err := e.UpdateInstanceProperties(test.args.rId, test.args.insProp, test.args.dsName, test.args.dsDisplayName, test.args.insName, test.args.patch)
+		_, err := e.UpdateInstanceProperties(test.args.rId, test.args.insProp, test.args.dsName, test.args.dsDisplayName, test.args.insName, test.args.patch)
 		if err != nil {
 			t.Errorf("UpdateInstanceProperties() error = %v", err)
 			return
 		}
 	})
 
-	cleanUp()
+	cleanupLMEnv()
 }
 
 func TestUpdateInstancePropertiesValidation(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := utils.Response{
+		response := LMMetricIngestResponse{
 			Success: true,
 			Message: "Instance properties updated successfully!!",
 		}
-		body, _ := json.Marshal(response)
-		w.Write(body)
+		assert.NoError(t, json.NewEncoder(w).Encode(&response))
 	}))
 
 	type args struct {
@@ -771,7 +336,7 @@ func TestUpdateInstancePropertiesValidation(t *testing.T) {
 	type fields struct {
 		client *http.Client
 		url    string
-		auth   model.AuthProvider
+		auth   utils.AuthParams
 	}
 
 	test := struct {
@@ -783,7 +348,7 @@ func TestUpdateInstancePropertiesValidation(t *testing.T) {
 		fields: fields{
 			client: ts.Client(),
 			url:    ts.URL,
-			auth:   model.DefaultAuthenticator{},
+			auth:   utils.AuthParams{},
 		},
 		args: args{
 			rId:           map[string]string{"system.displayname": "test-cart-service"},
@@ -796,8 +361,8 @@ func TestUpdateInstancePropertiesValidation(t *testing.T) {
 	}
 
 	t.Run(test.name, func(t *testing.T) {
-		setEnv()
-		rateLimiter, _ := rateLimiter.NewMetricsRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 100})
+		setLMEnv()
+		rateLimiter, _ := rateLimiter.NewMetricsRateLimiter(rateLimiter.MetricsRateLimiterSetting{RequestCount: 100})
 
 		e := &LMMetricIngest{
 			client:      test.fields.client,
@@ -805,91 +370,216 @@ func TestUpdateInstancePropertiesValidation(t *testing.T) {
 			auth:        test.fields.auth,
 			rateLimiter: rateLimiter,
 		}
-		err := e.UpdateInstanceProperties(test.args.rId, test.args.insProp, test.args.dsName, test.args.dsDisplayName, test.args.insName, test.args.patch)
+		_, err := e.UpdateInstanceProperties(test.args.rId, test.args.insProp, test.args.dsName, test.args.dsDisplayName, test.args.insName, test.args.patch)
 		if err == nil {
 			t.Errorf("UpdateInstanceProperties() expect error  but got error = nil")
 			return
 		}
 	})
 
-	cleanUp()
+	cleanupLMEnv()
 }
 
-func TestUpdateInstancePropertiesError(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := utils.Response{
-			Success: false,
-			Message: "Error caught...",
-		}
-		body, _ := json.Marshal(response)
-		w.WriteHeader(http.StatusExpectationFailed)
-		w.Write(body)
-	}))
-
-	type args struct {
-		rId           map[string]string
-		insProp       map[string]string
-		dsName        string
-		dsDisplayName string
-		insName       string
-		patch         bool
+func getTestInput() (model.ResourceInput, model.DatasourceInput, model.InstanceInput, model.DataPointInput) {
+	rInput1 := model.ResourceInput{
+		ResourceName: "test-cart-service",
+		ResourceID:   map[string]string{"system.displayname": "test-cart-service"},
 	}
 
-	type fields struct {
-		client *http.Client
-		url    string
-		auth   model.AuthProvider
+	dsInput1 := model.DatasourceInput{
+		DataSourceName:  "GoSDK",
+		DataSourceGroup: "Sdk",
 	}
 
-	test := struct {
-		name   string
-		fields fields
-		args   args
-	}{
-		name: "Update instance properties",
-		fields: fields{
-			client: ts.Client(),
-			url:    ts.URL,
-			auth:   model.DefaultAuthenticator{},
-		},
-		args: args{
-			rId:           map[string]string{"system.displayname": "test-cart-service"},
-			insProp:       map[string]string{"new": "updatedprop"},
-			dsName:        "TestDS",
-			dsDisplayName: "TestDisplayName",
-			insName:       "DataSDK",
-			patch:         true,
-		},
+	insInput1 := model.InstanceInput{
+		InstanceName:       "DataSDK",
+		InstanceProperties: map[string]string{"test": "datasdk"},
 	}
 
-	t.Run(test.name, func(t *testing.T) {
-		setEnv()
-		rateLimiter, _ := rateLimiter.NewMetricsRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 100})
+	dpInput1 := model.DataPointInput{
+		DataPointName: "cpu",
+		DataPointType: "COUNTER",
+		Value:         map[string]string{fmt.Sprintf("%d", time.Now().Unix()): "124"},
+	}
+	return rInput1, dsInput1, insInput1, dpInput1
+}
 
-		e := &LMMetricIngest{
-			client:      test.fields.client,
-			url:         test.fields.url,
-			auth:        test.fields.auth,
-			rateLimiter: rateLimiter,
-		}
-		err := e.UpdateInstanceProperties(test.args.rId, test.args.insProp, test.args.dsName, test.args.dsDisplayName, test.args.insName, test.args.patch)
-		if err == nil {
-			t.Errorf("UpdateInstanceProperties() error expected but got error = nil")
-			return
-		}
+func getTestInputResCreate() (model.ResourceInput, model.DatasourceInput, model.InstanceInput, model.DataPointInput) {
+	rInput1 := model.ResourceInput{
+		ResourceName: "test-cart-service",
+		ResourceID:   map[string]string{"system.displayname": "test-cart-service"},
+		IsCreate:     true,
+	}
+
+	dsInput1 := model.DatasourceInput{
+		DataSourceName:  "GoSDK",
+		DataSourceGroup: "Sdk",
+	}
+
+	insInput1 := model.InstanceInput{
+		InstanceName:       "DataSDK",
+		InstanceProperties: map[string]string{"test": "datasdk"},
+	}
+
+	dpInput1 := model.DataPointInput{
+		DataPointName: "cpu",
+		DataPointType: "COUNTER",
+		Value:         map[string]string{fmt.Sprintf("%d", time.Now().Unix()): "124"},
+	}
+	return rInput1, dsInput1, insInput1, dpInput1
+}
+
+func getTestMetricsBatch() *metricBatch {
+	metricBatch := NewMetricBatch()
+
+	rInput1 := model.ResourceInput{
+		ResourceName: "test-cart-service",
+		ResourceID:   map[string]string{"system.displayname": "test-cart-service"},
+	}
+
+	dsInput1 := model.DatasourceInput{
+		DataSourceName:        "GoSDK",
+		DataSourceDisplayName: "GoSDK",
+		DataSourceGroup:       "Sdk",
+	}
+
+	insInput1 := model.InstanceInput{
+		InstanceName:       "TelemetrySDK",
+		InstanceProperties: map[string]string{"test": "telemetrysdk"},
+	}
+
+	dpInput1 := model.DataPointInput{
+		DataPointName:            "cpu",
+		DataPointType:            "GAUGE",
+		DataPointAggregationType: "SUM",
+		Value:                    map[string]string{fmt.Sprintf("%d", time.Now().Unix()): "124"},
+	}
+
+	metricInput1 := model.MetricsInput{
+		Resource:   rInput1,
+		Datasource: dsInput1,
+		Instance:   insInput1,
+		DataPoint:  dpInput1,
+	}
+
+	req1, _ := buildMetricRequest(context.Background(), metricInput1)
+
+	metricBatch.pushToBatch(req1)
+
+	rInput2 := model.ResourceInput{
+		ResourceName: "test-payment-service",
+		ResourceID:   map[string]string{"system.displayname": "test-cart-service"},
+		IsCreate:     true,
+	}
+
+	dsInput2 := model.DatasourceInput{
+		DataSourceName:        "GoSDK",
+		DataSourceDisplayName: "GoSDK",
+		DataSourceGroup:       "Sdk",
+	}
+
+	insInput2 := model.InstanceInput{
+		InstanceName:       "DataSDK",
+		InstanceProperties: map[string]string{"test": "datasdk"},
+	}
+
+	dpInput2 := model.DataPointInput{
+		DataPointName:            "memory",
+		DataPointType:            "COUNTER",
+		DataPointAggregationType: "SUM",
+		Value:                    map[string]string{fmt.Sprintf("%d", time.Now().Unix()): "124"},
+	}
+
+	metricInput2 := model.MetricsInput{
+		Resource:   rInput2,
+		Datasource: dsInput2,
+		Instance:   insInput2,
+		DataPoint:  dpInput2,
+	}
+
+	req2, _ := buildMetricRequest(context.Background(), metricInput2)
+
+	metricBatch.pushToBatch(req2)
+
+	return metricBatch
+}
+
+func TestHandleMetricsExportResponse(t *testing.T) {
+	t.Run("should handle success response", func(t *testing.T) {
+		ingestResponse, err := handleMetricsExportResponse(context.Background(), &http.Response{
+			StatusCode: http.StatusAccepted,
+			Body:       ioutil.NopCloser(bytes.NewBufferString("Accepted")),
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, model.IngestResponse{
+			Success:    true,
+			StatusCode: http.StatusAccepted,
+		}, *ingestResponse)
 	})
 
-	cleanUp()
+	t.Run("should handle multi-status response", func(t *testing.T) {
+		data := []byte(`{
+			"success": false,
+			"message": "Some events were not accepted. See the 'errors' property for additional information.",
+			"errors": [
+			  {
+				"code": 4001,
+				"error": "Resource not found"
+			  }
+			]
+		  }`)
+		ingestResponse, err := handleMetricsExportResponse(context.Background(), &http.Response{
+			StatusCode:    http.StatusMultiStatus,
+			ContentLength: int64(len(data)),
+			Request:       httptest.NewRequest(http.MethodPost, "https://example.logicmonitor.com"+uri, nil),
+			Body:          ioutil.NopCloser(bytes.NewReader(data)),
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, model.IngestResponse{
+			Success:    false,
+			StatusCode: http.StatusMultiStatus,
+			MultiStatus: []struct {
+				Code  float64 `json:"code"`
+				Error string  `json:"error"`
+			}{
+				{
+					Code:  float64(4001),
+					Error: "Resource not found",
+				},
+			},
+			Error:   fmt.Errorf("error exporting items, request to https://example.logicmonitor.com/v2/metric/ingest responded with HTTP Status Code 207, Message: Some events were not accepted. See the 'errors' property for additional information., Details: error code: [4001], error message: Resource not found"),
+			Message: "Some events were not accepted. See the 'errors' property for additional information.",
+		}, *ingestResponse)
+	})
+
+	t.Run("should handle non multi-status response", func(t *testing.T) {
+		data := []byte(`{
+			"success": false,
+			"message": "Too Many Requests"
+		  }`)
+		ingestResponse, err := handleMetricsExportResponse(context.Background(), &http.Response{
+			StatusCode:    http.StatusTooManyRequests,
+			ContentLength: int64(len(data)),
+			Request:       httptest.NewRequest(http.MethodPost, "https://example.logicmonitor.com"+uri, nil),
+			Body:          ioutil.NopCloser(bytes.NewReader(data)),
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, model.IngestResponse{
+			Success:    false,
+			StatusCode: http.StatusTooManyRequests,
+			Error:      fmt.Errorf("error exporting items, request to https://example.logicmonitor.com%s responded with HTTP Status Code 429, Message: Too Many Requests, Details: Too Many Requests", uri),
+		}, *ingestResponse)
+	})
 }
 
-func setEnv() {
-	os.Setenv("LM_ACCOUNT", "testenv")
-	os.Setenv("LM_ACCESS_ID", "weryuifsjkf")
-	os.Setenv("LM_ACCESS_KEY", "@dfsd4FDf999999FDE")
+func setLMEnv() {
+	os.Setenv("LOGICMONITOR_ACCOUNT", "testenv")
+	os.Setenv("LOGICMONITOR_ACCESS_ID", "weryuifsjkf")
+	os.Setenv("LOGICMONITOR_ACCESS_KEY", "@dfsd4FDf999999FDE")
 }
 
-func cleanUp() {
-	os.Unsetenv("LM_ACCOUNT")
-	os.Unsetenv("LM_ACCESS_ID")
-	os.Unsetenv("LM_ACCESS_KEY")
+func cleanupLMEnv() {
+	os.Unsetenv("LOGICMONITOR_ACCOUNT")
+	os.Unsetenv("LOGICMONITOR_ACCESS_ID")
+	os.Unsetenv("LOGICMONITOR_ACCESS_KEY")
 }

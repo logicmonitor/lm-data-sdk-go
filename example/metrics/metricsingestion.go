@@ -22,21 +22,21 @@ func main() {
 	}
 
 	rInput, dsInput, insInput, dpInput := createInput1()
-	err = lmMetric.SendMetrics(context.Background(), rInput, dsInput, insInput, dpInput)
+	_, err = lmMetric.SendMetrics(context.Background(), rInput, dsInput, insInput, dpInput)
 	if err != nil {
 		fmt.Println("Error in sending 1st metric: ", err)
 	}
 	time.Sleep(1 * time.Second)
 
 	rInput1, dsInput1, insInput1, dpInput1 := createInput2()
-	err = lmMetric.SendMetrics(context.Background(), rInput1, dsInput1, insInput1, dpInput1)
+	_, err = lmMetric.SendMetrics(context.Background(), rInput1, dsInput1, insInput1, dpInput1)
 	if err != nil {
 		fmt.Println("Error in sending 2nd metric: ", err)
 	}
 	time.Sleep(2 * time.Second)
 
 	rInput2, dsInput2, insInput2, dpInput2 := createInput3()
-	err = lmMetric.SendMetrics(context.Background(), rInput2, dsInput2, insInput2, dpInput2)
+	_, err = lmMetric.SendMetrics(context.Background(), rInput2, dsInput2, insInput2, dpInput2)
 	if err != nil {
 		fmt.Println("Error in sending 3rd metric: ", err)
 	}
@@ -49,12 +49,12 @@ func main() {
 	insName := "DataSDK"
 	patch := true
 
-	err = lmMetric.UpdateInstanceProperties(rId, insProp, dsName, dsDisplayName, insName, patch)
+	_, err = lmMetric.UpdateInstanceProperties(rId, insProp, dsName, dsDisplayName, insName, patch)
 	if err != nil {
 		fmt.Println("Error in updating instance properties: ", err)
 	}
 
-	err = lmMetric.UpdateResourceProperties(resName, rId, resProp, patch)
+	_, err = lmMetric.UpdateResourceProperties(resName, rId, resProp, patch)
 	if err != nil {
 		fmt.Println("Error in updating resource properties: ", err)
 	}
