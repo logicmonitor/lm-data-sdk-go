@@ -1,9 +1,11 @@
 package logs
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -321,6 +323,80 @@ func TestBuildPayload(t *testing.T) {
 			assert.Equal(t, tt.expectedPayload, payload)
 		})
 	}
+}
+
+func TestHandleLogsExportResponse(t *testing.T) {
+	t.Run("should handle success response", func(t *testing.T) {
+		ingestResponse, err := handleLogsExportResponse(context.Background(), &http.Response{
+			StatusCode: http.StatusAccepted,
+			Body:       ioutil.NopCloser(bytes.NewBufferString("Accepted")),
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, model.IngestResponse{
+			Success:    true,
+			StatusCode: http.StatusAccepted,
+		}, *ingestResponse)
+	})
+
+	t.Run("should handle multi-status response", func(t *testing.T) {
+		data := []byte(`{
+			"success": false,
+			"message": "Some events were not accepted. See the 'errors' property for additional information.",
+			"errors": [
+			  {
+				"code": 4001,
+				"error": "Resource not found",
+				"event": {
+				  "_lm.resourceId": {
+					"system.deviceId": "kish"
+				  },
+				  "message": "test"
+				}
+			  }
+			]
+		  }`)
+		ingestResponse, err := handleLogsExportResponse(context.Background(), &http.Response{
+			StatusCode:    http.StatusMultiStatus,
+			ContentLength: int64(len(data)),
+			Request:       httptest.NewRequest(http.MethodPost, "https://example.logicmonitor.com"+logIngestURI, nil),
+			Body:          ioutil.NopCloser(bytes.NewReader(data)),
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, model.IngestResponse{
+			Success:    false,
+			StatusCode: http.StatusMultiStatus,
+			MultiStatus: []struct {
+				Code  float64 `json:"code"`
+				Error string  `json:"error"`
+			}{
+				{
+					Code:  float64(4001),
+					Error: "Resource not found",
+				},
+			},
+			Error:   fmt.Errorf("error exporting items, request to https://example.logicmonitor.com/log/ingest responded with HTTP Status Code 207, Message: Some events were not accepted. See the 'errors' property for additional information., Details=error code: [4001], error message: Resource not found"),
+			Message: "Some events were not accepted. See the 'errors' property for additional information.",
+		}, *ingestResponse)
+	})
+
+	t.Run("should handle non multi-status response", func(t *testing.T) {
+		data := []byte(`{
+			"success": false,
+			"message": "Too Many Requests"
+		  }`)
+		ingestResponse, err := handleLogsExportResponse(context.Background(), &http.Response{
+			StatusCode:    http.StatusTooManyRequests,
+			ContentLength: int64(len(data)),
+			Request:       httptest.NewRequest(http.MethodPost, "https://example.logicmonitor.com"+logIngestURI, nil),
+			Body:          ioutil.NopCloser(bytes.NewReader(data)),
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, model.IngestResponse{
+			Success:    false,
+			StatusCode: http.StatusTooManyRequests,
+			Error:      fmt.Errorf("error exporting items, request to https://example.logicmonitor.com/log/ingest responded with HTTP Status Code 429, Message: Too Many Requests, Details=Too Many Requests"),
+		}, *ingestResponse)
+	})
 }
 
 func setLMEnv() {

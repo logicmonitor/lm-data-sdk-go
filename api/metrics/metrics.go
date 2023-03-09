@@ -629,7 +629,7 @@ func handleMetricsExportResponse(ctx context.Context, resp *http.Response) (*mod
 // Returns nil if the response is empty or cannot be decoded.
 func readResponse(resp *http.Response) *LMMetricIngestResponse {
 	var lmMetricIngestResponse *LMMetricIngestResponse
-	if resp.StatusCode >= 400 && resp.StatusCode <= 599 {
+	if resp.StatusCode == 207 || resp.StatusCode >= 400 && resp.StatusCode <= 599 {
 		// Request failed. Read the body.
 		maxRead := resp.ContentLength
 		if maxRead == -1 || maxRead > maxHTTPResponseReadBytes {

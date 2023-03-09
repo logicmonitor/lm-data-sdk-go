@@ -1,8 +1,11 @@
 package traces
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -123,6 +126,39 @@ func TestPushToBatch(t *testing.T) {
 		expectedSpanCount := before + testData.SpanCount()
 
 		assert.Equal(t, expectedSpanCount, traceIngest.batch.data.TracesPayload.TraceData.SpanCount())
+	})
+}
+
+func TestHandleTracesExportResponse(t *testing.T) {
+	t.Run("should handle success response", func(t *testing.T) {
+		ingestResponse, err := handleTraceExportResponse(context.Background(), &http.Response{
+			StatusCode: http.StatusAccepted,
+			Body:       ioutil.NopCloser(bytes.NewBufferString("Accepted")),
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, model.IngestResponse{
+			Success:    true,
+			StatusCode: http.StatusAccepted,
+		}, *ingestResponse)
+	})
+
+	t.Run("should handle non multi-status response", func(t *testing.T) {
+		data := []byte(`{
+			"success": false,
+			"message": "Too Many Requests"
+		  }`)
+		ingestResponse, err := handleTraceExportResponse(context.Background(), &http.Response{
+			StatusCode:    http.StatusTooManyRequests,
+			ContentLength: int64(len(data)),
+			Request:       httptest.NewRequest(http.MethodPost, "https://example.logicmonitor.com"+otlpTraceIngestURI, nil),
+			Body:          ioutil.NopCloser(bytes.NewReader(data)),
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, model.IngestResponse{
+			Success:    false,
+			StatusCode: http.StatusTooManyRequests,
+			Error:      fmt.Errorf("error exporting items, request to https://example.logicmonitor.com%s responded with HTTP Status Code 429, Message=Too Many Requests", otlpTraceIngestURI),
+		}, *ingestResponse)
 	})
 }
 
