@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -49,10 +50,11 @@ type LMMetricIngestRequest struct {
 }
 
 type LMMetricIngestResponse struct {
-	Success    bool              `json:"success"`
-	Message    string            `json:"message"`
-	Code       int               `json:"code"`
-	ResourceID map[string]string `json:"resourceId"`
+	Success    bool                     `json:"success"`
+	Message    string                   `json:"message"`
+	Code       int                      `json:"code"`
+	ResourceID map[string]string        `json:"resourceId"`
+	Errors     []map[string]interface{} `json:"errors"`
 }
 
 type metricBatch struct {
@@ -209,6 +211,9 @@ func (metricIngest *LMMetricIngest) processBatch(ctx context.Context) {
 			return
 		case <-time.NewTicker(metricIngest.batch.batchInterval()).C:
 			req := metricIngest.batch.combineBatchedMetricsRequests()
+			if req == nil {
+				continue
+			}
 			_, err := metricIngest.export(req, metricIngest.uri(), http.MethodPost)
 			if err != nil {
 				log.Println(err)
@@ -303,6 +308,7 @@ func (batch *metricBatch) combineBatchedMetricsRequests() *LMMetricIngestRequest
 			DataPointDescription:     metricPayload.Instances[0].DataPoints[0].DataPointDescription,
 			DataPointType:            metricPayload.Instances[0].DataPoints[0].DataPointType,
 			DataPointAggregationType: metricPayload.Instances[0].DataPoints[0].DataPointAggregationType,
+			Value:                    metricPayload.Instances[0].DataPoints[0].Value,
 		}
 
 		if dpArray, ok := datapointMap[metricPayload.Instances[0].InstanceName]; !ok {
@@ -388,18 +394,18 @@ func (batch *metricBatch) mergeMetricPayload(resources map[string]model.Resource
 }
 
 // export exports metrics to the LM platform
-func (lmi *LMMetricIngest) export(req *LMMetricIngestRequest, uri, method string) (*model.IngestResponse, error) {
+func (metricIngest *LMMetricIngest) export(req *LMMetricIngestRequest, uri, method string) (*model.IngestResponse, error) {
 	ctx := context.Background()
 	var errs []error
 	var respErrs []error
 
 	cfg := client.RequestConfig{
-		Client:      lmi.client,
-		Url:         lmi.url,
+		Client:      metricIngest.client,
+		Url:         metricIngest.url,
 		Uri:         uri,
 		Method:      method,
-		Gzip:        lmi.gzip,
-		RateLimiter: lmi.rateLimiter,
+		Gzip:        metricIngest.gzip,
+		RateLimiter: metricIngest.rateLimiter,
 	}
 
 	apiCallResponse := &model.IngestResponse{StatusCode: http.StatusMultiStatus}
@@ -410,7 +416,7 @@ func (lmi *LMMetricIngest) export(req *LMMetricIngestRequest, uri, method string
 			errs = append(errs, fmt.Errorf("error in marshaling update property metric payload: %w ", err))
 		}
 
-		cfg.Token = lmi.auth.GetCredentials(method, uri, payloadBody)
+		cfg.Token = metricIngest.auth.GetCredentials(method, uri, payloadBody)
 		cfg.Body = payloadBody
 
 		resp, err := client.DoRequest(ctx, cfg, handleMetricsExportResponse)
@@ -418,13 +424,17 @@ func (lmi *LMMetricIngest) export(req *LMMetricIngestRequest, uri, method string
 			errs = append(errs, fmt.Errorf("error in updating properties: %w", err))
 		} else if resp != nil && (resp.StatusCode >= 400 && resp.StatusCode <= 599) {
 
-			apiCallResponse.MultiStatus = append(apiCallResponse.MultiStatus, struct {
-				Code  int    `json:"code"`
-				Error string `json:"error"`
-			}{
-				Code:  resp.StatusCode,
-				Error: resp.Error.Error(),
-			})
+			if resp.StatusCode == http.StatusMultiStatus {
+				apiCallResponse.MultiStatus = append(apiCallResponse.MultiStatus, resp.MultiStatus...)
+			} else {
+				apiCallResponse.MultiStatus = append(apiCallResponse.MultiStatus, struct {
+					Code  float64 `json:"code"`
+					Error string  `json:"error"`
+				}{
+					Code:  float64(resp.StatusCode),
+					Error: resp.Error.Error(),
+				})
+			}
 			respErrs = append(respErrs, errors.New(resp.Message))
 		}
 	}
@@ -434,7 +444,7 @@ func (lmi *LMMetricIngest) export(req *LMMetricIngestRequest, uri, method string
 		if err != nil {
 			errs = append(errs, fmt.Errorf("error in marshaling metric payload: %w", err))
 		}
-		cfg.Token = lmi.auth.GetCredentials(method, uri, payloadBody)
+		cfg.Token = metricIngest.auth.GetCredentials(method, uri, payloadBody)
 		cfg.Body = payloadBody
 
 		resp, err := client.DoRequest(ctx, cfg, handleMetricsExportResponse)
@@ -442,13 +452,17 @@ func (lmi *LMMetricIngest) export(req *LMMetricIngestRequest, uri, method string
 			errs = append(errs, fmt.Errorf("error while exporting metrics: %w", err))
 		} else if resp != nil && (resp.StatusCode >= 400 && resp.StatusCode <= 599) {
 
-			apiCallResponse.MultiStatus = append(apiCallResponse.MultiStatus, struct {
-				Code  int    `json:"code"`
-				Error string `json:"error"`
-			}{
-				Code:  resp.StatusCode,
-				Error: resp.Error.Error(),
-			})
+			if resp.StatusCode == http.StatusMultiStatus {
+				apiCallResponse.MultiStatus = append(apiCallResponse.MultiStatus, resp.MultiStatus...)
+			} else {
+				apiCallResponse.MultiStatus = append(apiCallResponse.MultiStatus, struct {
+					Code  float64 `json:"code"`
+					Error string  `json:"error"`
+				}{
+					Code:  float64(resp.StatusCode),
+					Error: resp.Error.Error(),
+				})
+			}
 			respErrs = append(respErrs, errors.New(resp.Message))
 		}
 	}
@@ -459,7 +473,7 @@ func (lmi *LMMetricIngest) export(req *LMMetricIngestRequest, uri, method string
 		if err != nil {
 			errs = append(errs, fmt.Errorf("error in marshaling metric payload with create flag: %w", err))
 		}
-		cfg.Token = lmi.auth.GetCredentials(method, uri, payloadBody)
+		cfg.Token = metricIngest.auth.GetCredentials(method, uri, payloadBody)
 		cfg.Body = payloadBody
 		cfg.Uri = metricURI
 
@@ -468,13 +482,17 @@ func (lmi *LMMetricIngest) export(req *LMMetricIngestRequest, uri, method string
 			errs = append(errs, fmt.Errorf("error while exporting metrics with create flag: %w", err))
 		} else if resp != nil && (resp.StatusCode >= 400 && resp.StatusCode <= 599) {
 
-			apiCallResponse.MultiStatus = append(apiCallResponse.MultiStatus, struct {
-				Code  int    `json:"code"`
-				Error string `json:"error"`
-			}{
-				Code:  resp.StatusCode,
-				Error: resp.Error.Error(),
-			})
+			if resp.StatusCode == http.StatusMultiStatus {
+				apiCallResponse.MultiStatus = append(apiCallResponse.MultiStatus, resp.MultiStatus...)
+			} else {
+				apiCallResponse.MultiStatus = append(apiCallResponse.MultiStatus, struct {
+					Code  float64 `json:"code"`
+					Error string  `json:"error"`
+				}{
+					Code:  float64(resp.StatusCode),
+					Error: resp.Error.Error(),
+				})
+			}
 			respErrs = append(respErrs, errors.New(resp.Message))
 		}
 	}
@@ -483,7 +501,7 @@ func (lmi *LMMetricIngest) export(req *LMMetricIngestRequest, uri, method string
 	return apiCallResponse, multierr.Combine(errs...)
 }
 
-func (lmi *LMMetricIngest) UpdateResourceProperties(resName string, resIDs, resProps map[string]string, patch bool) (*model.IngestResponse, error) {
+func (metricIngest *LMMetricIngest) UpdateResourceProperties(resName string, resIDs, resProps map[string]string, patch bool) (*model.IngestResponse, error) {
 	if resName == "" || resIDs == nil || resProps == nil {
 		return nil, fmt.Errorf("one of the fields: resource name, resource ids or resource properties, is missing")
 	}
@@ -507,10 +525,10 @@ func (lmi *LMMetricIngest) UpdateResourceProperties(resName string, resIDs, resP
 
 	req := &LMMetricIngestRequest{UpdatePropertiesPayload: updateResProp}
 
-	return lmi.export(req, updateResPropURI, method)
+	return metricIngest.export(req, updateResPropURI, method)
 }
 
-func (lmi *LMMetricIngest) UpdateInstanceProperties(resIDs, insProps map[string]string, dsName, dsDisplayName, insName string, patch bool) (*model.IngestResponse, error) {
+func (metricIngest *LMMetricIngest) UpdateInstanceProperties(resIDs, insProps map[string]string, dsName, dsDisplayName, insName string, patch bool) (*model.IngestResponse, error) {
 	if resIDs == nil || insProps == nil || dsName == "" || insName == "" {
 		return nil, fmt.Errorf("one of the fields: instance name, datasource name, resource ids, or instance properties, is missing")
 	}
@@ -538,7 +556,7 @@ func (lmi *LMMetricIngest) UpdateInstanceProperties(resIDs, insProps map[string]
 	}
 
 	req := &LMMetricIngestRequest{UpdatePropertiesPayload: updateInsProp}
-	return lmi.export(req, updateInsPropURI, method)
+	return metricIngest.export(req, updateInsPropURI, method)
 }
 
 // handleLogsExportResponse handles the http response returned by LM platform
@@ -549,7 +567,7 @@ func handleMetricsExportResponse(ctx context.Context, resp *http.Response) (*mod
 		resp.Body.Close()
 	}()
 
-	if resp.StatusCode >= 200 && resp.StatusCode <= 299 {
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusAccepted {
 		return &model.IngestResponse{
 			StatusCode: resp.StatusCode,
 			Success:    true,
@@ -558,23 +576,53 @@ func handleMetricsExportResponse(ctx context.Context, resp *http.Response) (*mod
 
 	parsedResponse := readResponse(resp)
 
+	apiCallResponse := &model.IngestResponse{StatusCode: resp.StatusCode, Success: false}
+
 	// Format the error message. Use the status if it is present in the response.
 	var formattedErr error
 	if parsedResponse != nil {
+		var err error
+
+		if resp.StatusCode == http.StatusMultiStatus {
+			errs := []error{}
+			apiCallResponse.Message = parsedResponse.Message
+
+			for _, responseError := range parsedResponse.Errors {
+				if responseError["error"] != nil {
+					apiCallResponse.MultiStatus = append(apiCallResponse.MultiStatus, struct {
+						Code  float64 `json:"code"`
+						Error string  `json:"error"`
+					}{
+						Code:  responseError["code"].(float64),
+						Error: responseError["error"].(string),
+					})
+					errs = append(errs, fmt.Errorf("error code: [%d], error message: %s", int(responseError["code"].(float64)), responseError["error"].(string)))
+				}
+			}
+			err = multierr.Combine(errs...)
+		} else {
+			err = errors.New(parsedResponse.Message)
+		}
+
 		formattedErr = fmt.Errorf(
-			"error exporting items, request to %s responded with HTTP Status Code %d, Message: %s",
-			resp.Request.URL, resp.StatusCode, parsedResponse.Message)
+			"error exporting items, request to %s responded with HTTP Status Code %d, Message: %s, Details: %s",
+			resp.Request.URL, resp.StatusCode, parsedResponse.Message, err.Error())
 	} else {
 		formattedErr = fmt.Errorf(
 			"error exporting items, request to %s responded with HTTP Status Code %d",
 			resp.Request.URL, resp.StatusCode)
 	}
+	apiCallResponse.Error = formattedErr
 
-	return &model.IngestResponse{
-		StatusCode: resp.StatusCode,
-		Success:    false,
-		Error:      formattedErr,
-	}, nil
+	retryAfter := 0
+	if val := resp.Header.Get(headerRetryAfter); val != "" {
+		if seconds, err2 := strconv.Atoi(val); err2 == nil {
+			retryAfter = seconds
+		}
+	}
+	apiCallResponse.RetryAfter = retryAfter
+
+	return apiCallResponse, nil
 }
 
 // Read the response and decode the status.Status from the body.

@@ -61,12 +61,12 @@ func TestNewLMTraceIngest(t *testing.T) {
 
 func TestSendTraces(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := utils.Response{
+		response := LMTraceIngestResponse{
 			Success: true,
-			Message: "Traces exported successfully!!",
+			Message: "Accepted",
 		}
-		body, _ := json.Marshal(response)
-		w.Write(body)
+		w.WriteHeader(http.StatusAccepted)
+		assert.NoError(t, json.NewEncoder(w).Encode(&response))
 	}))
 
 	defer ts.Close()

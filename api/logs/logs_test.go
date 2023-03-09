@@ -51,12 +51,12 @@ func TestNewLMLogIngest(t *testing.T) {
 
 func TestSendLogs(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := utils.Response{
+		response := LMLogIngestResponse{
 			Success: true,
-			Message: "Logs exported successfully!!",
+			Message: "Accepted",
 		}
-		body, _ := json.Marshal(response)
-		w.Write(body)
+		w.WriteHeader(http.StatusAccepted)
+		assert.NoError(t, json.NewEncoder(w).Encode(&response))
 	}))
 
 	defer ts.Close()
@@ -134,12 +134,12 @@ func TestPushToBatch(t *testing.T) {
 func TestCombineBatchedLogRequests(t *testing.T) {
 	t.Run("should merge the log requests", func(t *testing.T) {
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			response := utils.Response{
+			response := LMLogIngestResponse{
 				Success: true,
-				Message: "Logs exported successfully!!",
+				Message: "Accepted",
 			}
-			body, _ := json.Marshal(response)
-			w.Write(body)
+			w.WriteHeader(http.StatusAccepted)
+			assert.NoError(t, json.NewEncoder(w).Encode(&response))
 		}))
 		logIngest := &LMLogIngest{
 			client: ts.Client(),
@@ -175,13 +175,11 @@ func TestCombineBatchedLogRequests(t *testing.T) {
 
 func BenchmarkSendLogs(b *testing.B) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := utils.Response{
+		response := LMLogIngestResponse{
 			Success: true,
-			Message: "Logs exported successfully!!",
+			Message: "Accepted",
 		}
-		body, _ := json.Marshal(response)
-		time.Sleep(10 * time.Millisecond)
-		w.Write(body)
+		assert.NoError(b, json.NewEncoder(w).Encode(&response))
 	}))
 
 	type args struct {

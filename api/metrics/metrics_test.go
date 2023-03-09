@@ -49,12 +49,12 @@ func TestNewLMMetricIngest(t *testing.T) {
 
 func TestSendMetrics(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := utils.Response{
+		response := LMMetricIngestResponse{
 			Success: true,
-			Message: "Metrics exported successfully!!",
+			Message: "Accepted",
 		}
-		body, _ := json.Marshal(response)
-		w.Write(body)
+		w.WriteHeader(http.StatusAccepted)
+		assert.NoError(t, json.NewEncoder(w).Encode(&response))
 	}))
 
 	defer ts.Close()
@@ -132,12 +132,11 @@ func TestCombineBatchedMetricsRequests(t *testing.T) {
 
 func TestUpdateResourceProperties(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := utils.Response{
+		response := LMMetricIngestResponse{
 			Success: true,
 			Message: "Resource properties updated successfully!!",
 		}
-		body, _ := json.Marshal(response)
-		w.Write(body)
+		assert.NoError(t, json.NewEncoder(w).Encode(&response))
 	}))
 
 	type args struct {
@@ -193,12 +192,11 @@ func TestUpdateResourceProperties(t *testing.T) {
 
 func TestUpdateResourcePropertiesValidation(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := utils.Response{
+		response := LMMetricIngestResponse{
 			Success: true,
 			Message: "Resource properties updated successfully!!",
 		}
-		body, _ := json.Marshal(response)
-		w.Write(body)
+		assert.NoError(t, json.NewEncoder(w).Encode(&response))
 	}))
 
 	type args struct {
@@ -253,12 +251,11 @@ func TestUpdateResourcePropertiesValidation(t *testing.T) {
 
 func TestUpdateInstanceProperties(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := utils.Response{
+		response := LMMetricIngestResponse{
 			Success: true,
 			Message: "Instance properties updated successfully!!",
 		}
-		body, _ := json.Marshal(response)
-		w.Write(body)
+		assert.NoError(t, json.NewEncoder(w).Encode(&response))
 	}))
 
 	type args struct {
@@ -318,12 +315,11 @@ func TestUpdateInstanceProperties(t *testing.T) {
 
 func TestUpdateInstancePropertiesValidation(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := utils.Response{
+		response := LMMetricIngestResponse{
 			Success: true,
 			Message: "Instance properties updated successfully!!",
 		}
-		body, _ := json.Marshal(response)
-		w.Write(body)
+		assert.NoError(t, json.NewEncoder(w).Encode(&response))
 	}))
 
 	type args struct {

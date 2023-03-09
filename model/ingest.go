@@ -10,8 +10,8 @@ type IngestResponse struct {
 	Message     string `json:"message"`
 	Error       error  `json:"error"`
 	MultiStatus []struct {
-		Code  int    `json:"code"`
-		Error string `json:"error"`
+		Code  float64 `json:"code"`
+		Error string  `json:"error"`
 	} `json:"multiStatus"`
 	RequestID  uuid.UUID `json:"requestId"`
 	RetryAfter int       `json:"retryAfter"`

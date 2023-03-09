@@ -54,7 +54,7 @@ type traceBatch struct {
 
 // NewLMTraceIngest initializes LMTraceIngest
 func NewLMTraceIngest(ctx context.Context, opts ...Option) (*LMTraceIngest, error) {
-	lti := LMTraceIngest{
+	traceIngest := LMTraceIngest{
 		client:             client.Client(),
 		auth:               utils.AuthParams{},
 		gzip:               true,
@@ -63,30 +63,30 @@ func NewLMTraceIngest(ctx context.Context, opts ...Option) (*LMTraceIngest, erro
 	}
 
 	for _, opt := range opts {
-		if err := opt(&lti); err != nil {
+		if err := opt(&traceIngest); err != nil {
 			return nil, err
 		}
 	}
 
 	var err error
-	if lti.url == "" {
+	if traceIngest.url == "" {
 		tracesURL, err := utils.URL()
 		if err != nil {
 			return nil, fmt.Errorf("error in forming Traces URL: %v", err)
 		}
-		lti.url = tracesURL
+		traceIngest.url = tracesURL
 	}
 
-	lti.rateLimiter, err = rateLimiter.NewTraceRateLimiter(lti.rateLimiterSetting)
+	traceIngest.rateLimiter, err = rateLimiter.NewTraceRateLimiter(traceIngest.rateLimiterSetting)
 	if err != nil {
 		return nil, err
 	}
-	go lti.rateLimiter.Run(ctx)
+	go traceIngest.rateLimiter.Run(ctx)
 
-	if lti.batch.enabled {
-		go lti.processBatch(ctx)
+	if traceIngest.batch.enabled {
+		go traceIngest.processBatch(ctx)
 	}
-	return &lti, nil
+	return &traceIngest, nil
 }
 
 func NewTraceBatch() *traceBatch {
@@ -112,7 +112,7 @@ func (traceIngest *LMTraceIngest) processBatch(ctx context.Context) {
 }
 
 // uri returns the endpoint/uri of trace ingest API
-func (lti *LMTraceIngest) uri() string {
+func (traceIngest *LMTraceIngest) uri() string {
 	return otlpTraceIngestURI
 }
 
@@ -122,17 +122,17 @@ func (batch *traceBatch) batchInterval() time.Duration {
 }
 
 // SendTraces is the entry point for receiving trace data
-func (lti *LMTraceIngest) SendTraces(ctx context.Context, td ptrace.Traces, o ...SendTracesOptionalParameters) (*model.IngestResponse, error) {
+func (traceIngest *LMTraceIngest) SendTraces(ctx context.Context, td ptrace.Traces, o ...SendTracesOptionalParameters) (*model.IngestResponse, error) {
 	req, err := buildTracesRequest(ctx, td, o...)
 	if err != nil {
 		return nil, err
 	}
 
-	if lti.batch.enabled {
-		lti.batch.pushToBatch(req)
+	if traceIngest.batch.enabled {
+		traceIngest.batch.pushToBatch(req)
 		return nil, nil
 	}
-	return lti.export(req, otlpTraceIngestURI, http.MethodPost)
+	return traceIngest.export(req, otlpTraceIngestURI, http.MethodPost)
 }
 
 func buildTracesRequest(ctx context.Context, td ptrace.Traces, o ...SendTracesOptionalParameters) (*LMTraceIngestRequest, error) {
@@ -168,7 +168,7 @@ func (batch *traceBatch) combineBatchedTraceRequests() *LMTraceIngestRequest {
 }
 
 // export exports trace to the LM platform
-func (lti *LMTraceIngest) export(req *LMTraceIngestRequest, uri, method string) (*model.IngestResponse, error) {
+func (traceIngest *LMTraceIngest) export(req *LMTraceIngestRequest, uri, method string) (*model.IngestResponse, error) {
 	if req.TracesPayload.TraceData.SpanCount() == 0 {
 		return nil, nil
 	}
@@ -182,16 +182,16 @@ func (lti *LMTraceIngest) export(req *LMTraceIngestRequest, uri, method string) 
 		return nil, err
 	}
 
-	token := lti.auth.GetCredentials(method, lti.uri(), body)
+	token := traceIngest.auth.GetCredentials(method, traceIngest.uri(), body)
 	cfg := client.RequestConfig{
-		Client:          lti.client,
-		RateLimiter:     lti.rateLimiter,
-		Url:             lti.url,
+		Client:          traceIngest.client,
+		RateLimiter:     traceIngest.rateLimiter,
+		Url:             traceIngest.url,
 		Body:            body,
-		Uri:             lti.uri(),
+		Uri:             traceIngest.uri(),
 		Method:          method,
 		Token:           token,
-		Gzip:            lti.gzip,
+		Gzip:            traceIngest.gzip,
 		Headers:         headers,
 		PayloadMetadata: rateLimiter.TracePayloadMetadata{RequestSpanCount: uint64(req.TracesPayload.TraceData.SpanCount())},
 	}

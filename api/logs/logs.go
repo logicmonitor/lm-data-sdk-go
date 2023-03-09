@@ -343,13 +343,13 @@ func handleLogsExportResponse(ctx context.Context, resp *http.Response) (*model.
 			for _, responseError := range parsedResponse.Errors {
 				if responseError["error"] != nil {
 					apiCallResponse.MultiStatus = append(apiCallResponse.MultiStatus, struct {
-						Code  int    `json:"code"`
-						Error string `json:"error"`
+						Code  float64 `json:"code"`
+						Error string  `json:"error"`
 					}{
-						Code:  responseError["code"].(int),
+						Code:  responseError["code"].(float64),
 						Error: responseError["error"].(string),
 					})
-					errs = append(errs, fmt.Errorf("error code: [%d], error message: %s", responseError["code"].(int), responseError["error"].(string)))
+					errs = append(errs, fmt.Errorf("error code: [%d], error message: %s", int(responseError["code"].(float64)), responseError["error"].(string)))
 				}
 			}
 			err = multierr.Combine(errs...)
