@@ -127,7 +127,7 @@ if err != nil {
 	return
 }
 payload := translator.ConvertToLMLogInput(logMessage, utils.NewTimestampFromTime(time.Now()).String(), resourceMapperMap, logMetadataMap)
-err := lmLogClient.SendLogs(ctx, payload)
+err := lmLogClient.SendLogs(ctx, []model.LogInput{payload})
 if err != nil {
 	log.Error("error while exporting logs ", err)
 }
