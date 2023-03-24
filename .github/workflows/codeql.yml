@@ -56,6 +56,4 @@ jobs:
         category: "/language:go"
         
     - name: Check with osv-detector
-      uses: G-Rath/check-with-osv-detector@v0.2.0
-
-
+      uses: G-Rath/check-with-osv-detector@0e8c0f954d8618a3a4671eca1918b30b2d085af3 # v0.2.0
