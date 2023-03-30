@@ -8,7 +8,7 @@ require (
 	go.opentelemetry.io/collector/pdata v1.0.0-rc8
 )
 
-require go.uber.org/multierr v1.10.0
+require go.uber.org/multierr v1.11.0
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
