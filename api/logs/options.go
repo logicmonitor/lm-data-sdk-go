@@ -72,7 +72,7 @@ func WithEndpoint(endpoint string) Option {
 // WithResourceMappingOperation is used to set the operation to be used for device mapping
 func WithResourceMappingOperation(op string) Option {
 	return func(logIngest *LMLogIngest) error {
-		if strings.EqualFold(op, ResourceMappingOp_AND) && strings.EqualFold(op, ResourceMappingOp_OR) {
+		if !strings.EqualFold(op, ResourceMappingOp_AND) && !strings.EqualFold(op, ResourceMappingOp_OR) {
 			return fmt.Errorf("invalid resource mapping operation: %s", op)
 		}
 		logIngest.resourceMappingOp = op
