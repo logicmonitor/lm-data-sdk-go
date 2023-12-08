@@ -116,7 +116,7 @@ func TestPushToBatch(t *testing.T) {
 
 		testData := createTraceData()
 
-		req, err := buildTracesRequest(context.Background(), createTraceData())
+		req, err := traceIngest.buildTracesRequest(context.Background(), createTraceData())
 		assert.NoError(t, err)
 
 		before := traceIngest.batch.data.TracesPayload.TraceData.SpanCount()

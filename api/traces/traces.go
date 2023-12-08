@@ -123,7 +123,7 @@ func (batch *traceBatch) batchInterval() time.Duration {
 
 // SendTraces is the entry point for receiving trace data
 func (traceIngest *LMTraceIngest) SendTraces(ctx context.Context, td ptrace.Traces, o ...SendTracesOptionalParameters) (*model.IngestResponse, error) {
-	req, err := buildTracesRequest(ctx, td, o...)
+	req, err := traceIngest.buildTracesRequest(ctx, td, o...)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +135,7 @@ func (traceIngest *LMTraceIngest) SendTraces(ctx context.Context, td ptrace.Trac
 	return traceIngest.export(req, otlpTraceIngestURI, http.MethodPost)
 }
 
-func buildTracesRequest(ctx context.Context, td ptrace.Traces, o ...SendTracesOptionalParameters) (*LMTraceIngestRequest, error) {
+func (traceIngest *LMTraceIngest) buildTracesRequest(ctx context.Context, td ptrace.Traces, o ...SendTracesOptionalParameters) (*LMTraceIngestRequest, error) {
 	tracesPayload := model.TracesPayload{
 		TraceData: td,
 	}
