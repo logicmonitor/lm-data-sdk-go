@@ -110,10 +110,11 @@ func TestPushToBatch(t *testing.T) {
 			Instance:   insInput,
 			DataPoint:  dpInput,
 		}
-		req, err := buildMetricRequest(context.Background(), input)
-		assert.NoError(t, err)
 
 		metricIngest := LMMetricIngest{batch: NewMetricBatch()}
+
+		req, err := metricIngest.buildMetricRequest(context.Background(), input)
+		assert.NoError(t, err)
 
 		before := len(metricIngest.batch.data)
 
@@ -430,7 +431,7 @@ func getTestInputResCreate() (model.ResourceInput, model.DatasourceInput, model.
 }
 
 func getTestMetricsBatch() *metricBatch {
-	metricBatch := NewMetricBatch()
+	metricIngest := LMMetricIngest{batch: NewMetricBatch()}
 
 	rInput1 := model.ResourceInput{
 		ResourceName: "test-cart-service",
@@ -462,9 +463,9 @@ func getTestMetricsBatch() *metricBatch {
 		DataPoint:  dpInput1,
 	}
 
-	req1, _ := buildMetricRequest(context.Background(), metricInput1)
+	req1, _ := metricIngest.buildMetricRequest(context.Background(), metricInput1)
 
-	metricBatch.pushToBatch(req1)
+	metricIngest.batch.pushToBatch(req1)
 
 	rInput2 := model.ResourceInput{
 		ResourceName: "test-payment-service",
@@ -497,11 +498,11 @@ func getTestMetricsBatch() *metricBatch {
 		DataPoint:  dpInput2,
 	}
 
-	req2, _ := buildMetricRequest(context.Background(), metricInput2)
+	req2, _ := metricIngest.buildMetricRequest(context.Background(), metricInput2)
 
-	metricBatch.pushToBatch(req2)
+	metricIngest.batch.pushToBatch(req2)
 
-	return metricBatch
+	return metricIngest.batch
 }
 
 func TestHandleMetricsExportResponse(t *testing.T) {

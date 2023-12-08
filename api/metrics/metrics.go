@@ -117,7 +117,7 @@ func (metricIngest *LMMetricIngest) SendMetrics(ctx context.Context, rInput mode
 		Instance:   instInput,
 		DataPoint:  dpInput,
 	}
-	req, err := buildMetricRequest(ctx, input, o...)
+	req, err := metricIngest.buildMetricRequest(ctx, input, o...)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +129,7 @@ func (metricIngest *LMMetricIngest) SendMetrics(ctx context.Context, rInput mode
 	return metricIngest.export(req, uri, http.MethodPost)
 }
 
-func buildMetricRequest(ctx context.Context, body model.MetricsInput, o ...SendMetricsOptionalParameters) (*LMMetricIngestRequest, error) {
+func (metricIngest *LMMetricIngest) buildMetricRequest(ctx context.Context, body model.MetricsInput, o ...SendMetricsOptionalParameters) (*LMMetricIngestRequest, error) {
 	metricIngestReq := &LMMetricIngestRequest{}
 
 	payload := append(metricIngestReq.Payload, buildMetricPayload(body))

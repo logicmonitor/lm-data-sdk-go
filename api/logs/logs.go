@@ -31,6 +31,11 @@ const (
 	defaultBatchingInterval  = 10 * time.Second
 	maxHTTPResponseReadBytes = 64 * 1024
 	headerRetryAfter         = "Retry-After"
+
+	// resource mapping
+	resourceMappingOpKey  = "_op"
+	ResourceMappingOp_AND = "AND"
+	ResourceMappingOp_OR  = "OR"
 )
 
 type LMLogIngest struct {
@@ -41,6 +46,7 @@ type LMLogIngest struct {
 	rateLimiterSetting rateLimiter.LogRateLimiterSetting
 	rateLimiter        rateLimiter.RateLimiter
 	batch              *logsBatch
+	resourceMappingOp  string
 }
 
 type LMLogIngestRequest struct {
@@ -123,7 +129,7 @@ func (logIngest *LMLogIngest) processBatch(ctx context.Context) {
 
 // SendLogs is the entry point for receiving log data
 func (logIngest *LMLogIngest) SendLogs(ctx context.Context, body []model.LogInput, o ...SendLogsOptionalParameters) (*model.IngestResponse, error) {
-	req, err := buildLogRequest(ctx, body, o...)
+	req, err := logIngest.buildLogRequest(ctx, body, o...)
 	if err != nil {
 		return nil, err
 	}
@@ -135,13 +141,13 @@ func (logIngest *LMLogIngest) SendLogs(ctx context.Context, body []model.LogInpu
 }
 
 // buildLogRequest creates LMLogIngestRequest
-func buildLogRequest(ctx context.Context, body []model.LogInput, o ...SendLogsOptionalParameters) (*LMLogIngestRequest, error) {
-	payload := buildLogPayload(body)
+func (logIngest *LMLogIngest) buildLogRequest(ctx context.Context, body []model.LogInput, o ...SendLogsOptionalParameters) (*LMLogIngestRequest, error) {
+	payload := buildLogPayload(body, logIngest.resourceMappingOp)
 	return &LMLogIngestRequest{Payload: payload}, nil
 }
 
 // buildLogPayload creates log payload from the received LogInput
-func buildLogPayload(logItems []model.LogInput) []model.LogPayload {
+func buildLogPayload(logItems []model.LogInput, resourceMappingOp string) []model.LogPayload {
 	var payload []model.LogPayload
 
 	for _, logItem := range logItems {
@@ -176,6 +182,10 @@ func buildLogPayload(logItems []model.LogInput) []model.LogPayload {
 
 		body[resourceIDKey] = logItem.ResourceID
 		body[timestampKey] = logItem.Timestamp
+
+		if resourceMappingOp != "" {
+			body[resourceMappingOpKey] = resourceMappingOp
+		}
 
 		payload = append(payload, body)
 	}

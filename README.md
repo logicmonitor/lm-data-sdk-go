@@ -7,9 +7,9 @@ LogicMonitor's Push Metrics feature allows you to send metrics directly to the L
 
 Similarly, If a log integration isn’t available or you have custom logs that you want to analyze, you can send the logs directly to your LogicMonitor account via the logs ingestion API.
 
-## Quick Start Notes:
+## Getting Started
 
-### Set Configurations
+### Authentication
 While using LMv1 authentication set LOGICMONITOR_ACCESS_ID and LOGICMONITOR_ACCESS_KEY properties.
 In case of BearerToken authentication set LOGICMONITOR_BEARER_TOKEN property. 
 Company's name or Account name must be passed to LOGICMONITOR_ACCOUNT property. 
@@ -22,120 +22,47 @@ All properties can be set using environment variable.
 |   LOGICMONITOR_ACCESS_KEY      |	Access key while using LMv1 authentication.|
 |   LOGICMONITOR_BEARER_TOKEN    |	BearerToken while using Bearer authentication.|
 
-#### Default values
+### Metrics Ingestion
+Here is an [example](https://github.com/logicmonitor/lm-data-sdk-go/blob/main/example/metrics/metricsingestion.go) for metrics ingestion.
 
-- Batching is enabled with default time interval as 10s.
-- Gzip compression of payload is enabled.
-- URL will be set to `https://${LOGICMONITOR_ACCOUNT}.logicmonitor.com/rest` followed by uri path (for logs: /log/ingest and for metrics: /v2/metric/ingest)
-- Default http client will have timeout of 5s.
 
-### Metrics Ingestion:
-For metrics ingestion, user must create an object of `ResourceInput`, `DataSourceInput`, `InstanceInput` and `DataPointInput` by passing relevant metric and attribute values to the struct fields using package `github.com/logicmonitor/lm-data-sdk-go/model`.
+#### Options
 
-Initialize metric ingest by calling `NewLMMetricIngest`. 
+Following options can be used to create the metrics api client.
 
-#### Options:
-
-- To change batching interval of metrics, user can pass an option `WithMetricBatchingInterval(batchinterval string)`.
-
-- To disable batching of metrics, user can pass an option `WithMetricBatchingDisabled()`.
-
-- To pass authentication parameters, user can pass an option `WithAuthentication(authParams utils.AuthParams)`.
-
-- To enable/disable gzip compression of metric payload, user can pass an option `WithGzipCompression(gzip bool)`.
-
-- Number of requests for metrics per minute can be controlled using `WithRateLimit(requestCount int)`.
-
-- To change settings of default HTTP client, user can pass an option `WithHTTPClient(client *http.Client)`
-
-- Endpoint URL to which metrics will be exported can be changed by `WithEndpoint(endpoint string)` 
-
-#### Example:
-
-For exporting metrics to LM platform, call SendMetrics by passing all the attributes as input parameters.
-
-    // fill the values
-	rInput := model.ResourceInput{
-		ResourceName: "example-cart-service",
-		ResourceID: map[string]string{"system.displayname": "example-cart-service"},
-	}
-
-	dsInput := model.DatasourceInput{
-		DataSourceName:        "TestGoSDK",
-		DataSourceDisplayName: "TestGoSDK",
-		DataSourceGroup:       "TestSDK",
-	}
-
-	insInput := model.InstanceInput{
-		InstanceName:       "DataSDK",
-		InstanceProperties: map[string]string{"test": "datasdk"},
-	}
-
-	dpInput := model.DataPointInput{
-		DataPointName:            "cpuusage",
-		DataPointType:            "COUNTER",
-		DataPointAggregationType: "SUM",
-		Value:                    map[string]string{fmt.Sprintf("%d", time.Now().Unix()): "124"},
-	}
-
-	options := []metrics.Option{
-		metrics.WithMetricBatchingInterval(3 * time.Second),
-	}
-
-	lmMetric, err := metrics.NewLMMetricIngest(context.Background(), options...)
-	if err != nil {
-		fmt.Println("Error in initializing metric ingest :", err)
-		return
-	}
-	lmMetric.SendMetrics(context.Background(), rInput, dsInput, insInput, dpInput)
+|   Option  |	Description | Default |
+| -------------------- |:----------------------------------:|:--------------:| 
+| `WithMetricBatchingInterval(batchinterval time.Duration)`  | Sets time interval to wait before performing next batching of metrics. | `10s` |
+| `WithMetricBatchingDisabled()` | Disables batching of metrics. | `Enabled` |
+| `WithGzipCompression(gzip bool)` | Enables / disables gzip compression of metric payload. | `Enabled` |
+| `WithRateLimit(requestCount int)` | Sets limit on the number of requests to metrics API per minute. | `100` |
+| `WithHTTPClient(client *http.Client)` | Sets custom HTTP Client | `Default http client with timeout of 5s`|
+| `WithEndpoint(endpoint string)` | Sets endpoint to send the metrics to. | `https://${LOGICMONITOR_ACCOUNT}.logicmonitor.com/rest/`|
+| `WithAuthentication(authParams utils.AuthParams)`         | Sets authentication parameters | `-` |
 
 ### Logs Ingestion
-
-Initialize log ingest by calling `NewLMLogIngest`. 
-
-#### Options:
-
-- To change batching interval of logs, user can pass an option `WithLogBatchingInterval(batchinterval string)`
-
-- To disable batching of logs, user can pass an option `WithLogBatchingDisabled()`
-
-- To pass authentication parameters, user can pass an option `WithAuthentication(authParams utils.AuthParams)`
-
-- To enable/disable gzip compression of log payload, user can pass an option `WithGzipCompression(gzip bool)`
-
-- Number of requests for logs per minute can be controlled using `WithRateLimit(requestCount int)`
-
-- To change settings of default HTTP client, user can pass an option `WithHTTPClient(client *http.Client)`
-
-- Endpoint URL to which logs will be exported, can be changed by `WithEndpoint(endpoint string)` 
-
-#### Example:
-
-For exporting logs to LM platform, 
-1. Convert data into LM Log format by calling `ConvertToLMLogInput(logMessage, timestamp string, resourceidMap, metadata map[string]string)`. 
-2. Invoke `SendLogs(ctx context.Context, logPayload []model.LogInput)` by passing constucted LMLogInput as an input parameter (multiple LogInput can also be passed).
-
-```
-var options []logs.Option
-options = []logs.Option{
-	logs.WithLogBatchingInterval(3 * time.Second),
-}
-
-lmLogClient, err := logs.NewLMLogIngest(context.Background(), options...)
-if err != nil {
-	fmt.Println("Error in initilaizing log ingest ", err)
-	return
-}
-payload := translator.ConvertToLMLogInput(logMessage, utils.NewTimestampFromTime(time.Now()).String(), resourceMapperMap, logMetadataMap)
-err := lmLogClient.SendLogs(ctx, []model.LogInput{payload})
-if err != nil {
-	log.Error("error while exporting logs ", err)
-}
-```
-
-Read the Library Documentation to use Metrics/Logs ingestion API.
+Here is an [example](https://github.com/logicmonitor/lm-data-sdk-go/blob/main/example/logs/logsingestion.go) for logs ingestion.
 
 
-Copyright, 2022, LogicMonitor, Inc.
+#### Options
+
+Following options can be used to create the logs api client.
+
+
+|   Option  |	Description | Default |
+| -------------------- |:---------------------------------------------:|:--------------:|  
+| `WithLogBatchingInterval(batchinterval time.Duration)`  | Sets time interval to wait before performing next batching of logs. | `10s` |
+| `WithLogBatchingDisabled()` | Disables batching of logs. | `Enabled` |
+| `WithGzipCompression(gzip bool)` | Enables / disables gzip compression of metric payload. | `Enabled` |
+| `WithRateLimit(requestCount int)` | Sets limit on the number of requests to metrics API per minute. | `100` |
+| `WithHTTPClient(client *http.Client)` | Sets custom HTTP Client | `Default http client will have timeout of 5s`|
+| `WithEndpoint(endpoint string)` | Sets endpoint to send the metrics to. | `https://${LOGICMONITOR_ACCOUNT}.logicmonitor.com/rest/`|
+| `WithResourceMappingOperation(op string)` | Sets resource mapping operation. Valid operations are `AND` & `OR` | `-` |
+| `WithAuthentication(authParams utils.AuthParams)`         | Sets authentication parameters | `-` |
+
+
+
+
+Copyright, 2023, LogicMonitor, Inc.
 
 This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the MPL was not distributed with this file, You can obtain one at https://mozilla.org/MPL/2.0/.

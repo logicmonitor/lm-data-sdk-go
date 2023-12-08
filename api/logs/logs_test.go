@@ -120,7 +120,7 @@ func TestPushToBatch(t *testing.T) {
 
 		logIngest := LMLogIngest{batch: NewLogBatch()}
 
-		req, err := buildLogRequest(context.Background(), []model.LogInput{logInput})
+		req, err := logIngest.buildLogRequest(context.Background(), []model.LogInput{logInput})
 		assert.NoError(t, err)
 
 		before := len(logIngest.batch.data)
@@ -165,7 +165,7 @@ func TestCombineBatchedLogRequests(t *testing.T) {
 			Metadata:   map[string]interface{}{"test": "metadata"},
 		}
 
-		req, err := buildLogRequest(context.Background(), []model.LogInput{logInput1, logInput2, logInput3})
+		req, err := logIngest.buildLogRequest(context.Background(), []model.LogInput{logInput1, logInput2, logInput3})
 		assert.NoError(t, err)
 
 		logIngest.batch.pushToBatch(req)
@@ -242,9 +242,10 @@ func TestBuildPayload(t *testing.T) {
 	}
 
 	tests := []struct {
-		name            string
-		args            args
-		expectedPayload []model.LogPayload
+		name              string
+		args              args
+		resourceMappingOp string
+		expectedPayload   []model.LogPayload
 	}{
 		{
 			name: "log message value in string format",
@@ -314,12 +315,31 @@ func TestBuildPayload(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "pass resource mapping operation",
+			args: args{
+				log:        "This is test batch message",
+				timestamp:  "04:33:37.4203915 +0000 UTC",
+				resourceId: map[string]interface{}{"host.name": "test"},
+				metadata:   map[string]interface{}{"cloud.provider": "aws"},
+			},
+			resourceMappingOp: ResourceMappingOp_OR,
+			expectedPayload: []model.LogPayload{
+				{
+					lmLogsMessageKey:     "This is test batch message",
+					resourceIDKey:        map[string]interface{}{"host.name": "test"},
+					timestampKey:         "04:33:37.4203915 +0000 UTC",
+					resourceMappingOpKey: "OR",
+					"cloud.provider":     "aws",
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			logInput := translator.ConvertToLMLogInput(tt.args.log, tt.args.timestamp, tt.args.resourceId, tt.args.metadata)
-			payload := buildLogPayload([]model.LogInput{logInput})
+			payload := buildLogPayload([]model.LogInput{logInput}, tt.resourceMappingOp)
 			assert.Equal(t, tt.expectedPayload, payload)
 		})
 	}

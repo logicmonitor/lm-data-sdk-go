@@ -1,7 +1,9 @@
 package logs
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/logicmonitor/lm-data-sdk-go/utils"
@@ -63,6 +65,17 @@ func WithHTTPClient(client *http.Client) Option {
 func WithEndpoint(endpoint string) Option {
 	return func(logIngest *LMLogIngest) error {
 		logIngest.url = endpoint
+		return nil
+	}
+}
+
+// WithResourceMappingOperation is used to set the operation to be used for device mapping
+func WithResourceMappingOperation(op string) Option {
+	return func(logIngest *LMLogIngest) error {
+		if !strings.EqualFold(op, ResourceMappingOp_AND) && !strings.EqualFold(op, ResourceMappingOp_OR) {
+			return fmt.Errorf("invalid resource mapping operation: %s", op)
+		}
+		logIngest.resourceMappingOp = op
 		return nil
 	}
 }
