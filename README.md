@@ -32,7 +32,7 @@ Following options can be used to create the metrics api client.
 
 |   Option  |	Description | Default |
 | -------------------- |:----------------------------------:|:--------------:| 
-| `WithMetricBatchingInterval(batchinterval)`  | Sets time interval to wait before performing next batching of metrics. | `10s` |
+| `WithMetricBatchingInterval(batchinterval time.Duration)`  | Sets time interval to wait before performing next batching of metrics. | `10s` |
 | `WithMetricBatchingDisabled()` | Disables batching of metrics. | `Enabled` |
 | `WithGzipCompression(gzip bool)` | Enables / disables gzip compression of metric payload. | `Enabled` |
 | `WithRateLimit(requestCount int)` | Sets limit on the number of requests to metrics API per minute. | `100` |
@@ -51,7 +51,7 @@ Following options can be used to create the logs api client.
 
 |   Option  |	Description | Default |
 | -------------------- |:---------------------------------------------:|:--------------:|  
-| `WithLogBatchingInterval(batchinterval)`  | Sets time interval to wait before performing next batching of logs. | `10s` |
+| `WithLogBatchingInterval(batchinterval time.Duration)`  | Sets time interval to wait before performing next batching of logs. | `10s` |
 | `WithLogBatchingDisabled()` | Disables batching of logs. | `Enabled` |
 | `WithGzipCompression(gzip bool)` | Enables / disables gzip compression of metric payload. | `Enabled` |
 | `WithRateLimit(requestCount int)` | Sets limit on the number of requests to metrics API per minute. | `100` |
