@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/logicmonitor/lm-data-sdk-go/api/metrics"
@@ -17,29 +18,30 @@ func main() {
 
 	lmMetric, err := metrics.NewLMMetricIngest(context.Background(), options...)
 	if err != nil {
-		fmt.Println("Error in initializing metric ingest :", err)
+		fmt.Fprintf(os.Stderr, "Error when initializing metric client: %v\n", err)
 		return
 	}
 
 	rInput, dsInput, insInput, dpInput := createInput1()
 	_, err = lmMetric.SendMetrics(context.Background(), rInput, dsInput, insInput, dpInput)
 	if err != nil {
-		fmt.Println("Error in sending 1st metric: ", err)
+		fmt.Fprintf(os.Stderr, "Error when sending 1st metric: %v\n", err)
 	}
 	time.Sleep(1 * time.Second)
 
 	rInput1, dsInput1, insInput1, dpInput1 := createInput2()
 	_, err = lmMetric.SendMetrics(context.Background(), rInput1, dsInput1, insInput1, dpInput1)
 	if err != nil {
-		fmt.Println("Error in sending 2nd metric: ", err)
+		fmt.Fprintf(os.Stderr, "Error when sending 2nd metric: %v\n", err)
 	}
 	time.Sleep(2 * time.Second)
 
 	rInput2, dsInput2, insInput2, dpInput2 := createInput3()
 	_, err = lmMetric.SendMetrics(context.Background(), rInput2, dsInput2, insInput2, dpInput2)
 	if err != nil {
-		fmt.Println("Error in sending 3rd metric: ", err)
+		fmt.Fprintf(os.Stderr, "Error when sending 3rd metric: %v\n", err)
 	}
+
 	resName := "example-cart-service"
 	resProp := map[string]string{"propkey": "updatedprop"}
 	rId := map[string]string{"system.displayname": "example-cart-service"}
@@ -51,12 +53,12 @@ func main() {
 
 	_, err = lmMetric.UpdateInstanceProperties(rId, insProp, dsName, dsDisplayName, insName, patch)
 	if err != nil {
-		fmt.Println("Error in updating instance properties: ", err)
+		fmt.Fprintf(os.Stderr, "Error when updating instance properties: %v\n", err)
 	}
 
 	_, err = lmMetric.UpdateResourceProperties(resName, rId, resProp, patch)
 	if err != nil {
-		fmt.Println("Error in updating resource properties: ", err)
+		fmt.Fprintf(os.Stderr, "Error when updating resource properties: %v\n", err)
 	}
 	time.Sleep(10 * time.Second)
 }

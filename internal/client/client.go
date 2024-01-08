@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/logicmonitor/lm-data-sdk-go/model"
 	rateLimiter "github.com/logicmonitor/lm-data-sdk-go/pkg/ratelimiter"
 	"github.com/logicmonitor/lm-data-sdk-go/utils"
 )
@@ -24,6 +23,7 @@ type RequestConfig struct {
 	Gzip            bool
 	Headers         map[string]string
 	PayloadMetadata interface{}
+	UserAgent       string
 }
 
 func Client() *http.Client {
@@ -34,7 +34,7 @@ func Client() *http.Client {
 }
 
 // DoRequest compresses the payload and exports it to LM Platform
-func DoRequest(ctx context.Context, reqConfig RequestConfig, responseHandler func(context.Context, *http.Response) (*model.IngestResponse, error)) (*model.IngestResponse, error) {
+func DoRequest(ctx context.Context, reqConfig RequestConfig) (*http.Response, error) {
 	if reqConfig.Token == "" {
 		return nil, fmt.Errorf("missing authentication token")
 	}
@@ -56,7 +56,7 @@ func DoRequest(ctx context.Context, reqConfig RequestConfig, responseHandler fun
 
 	req.Header.Add("Content-Type", "application/json")
 	req.Header.Add("Authorization", reqConfig.Token)
-	req.Header.Add("User-Agent", utils.BuildUserAgent())
+	req.Header.Add("User-Agent", reqConfig.UserAgent)
 
 	if reqConfig.Gzip {
 		req.Header.Add("Content-Encoding", "gzip")
@@ -74,5 +74,5 @@ func DoRequest(ctx context.Context, reqConfig RequestConfig, responseHandler fun
 	if err != nil {
 		return nil, err
 	}
-	return responseHandler(ctx, httpResp)
+	return httpResp, nil
 }

@@ -17,6 +17,8 @@ type MetricPayload struct {
 	DataSourceGroup       string            `json:"dataSourceGroup,omitempty"`
 	DataSourceID          int               `json:"dataSourceId"`
 	Instances             []Instance        `json:"instances"`
+
+	IsCreate bool `json:"-"`
 }
 
 type Instance struct {

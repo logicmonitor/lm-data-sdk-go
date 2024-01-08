@@ -6,7 +6,7 @@ import (
 
 const (
 	PACKAGE_ID      = "lm-data-sdk-go/"
-	PACKAGE_VERSION = "0.3.0"
+	PACKAGE_VERSION = "1.1.1"
 	OS_NAME         = runtime.GOOS
 	ARCH            = runtime.GOARCH
 )
