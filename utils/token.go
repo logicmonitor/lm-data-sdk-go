@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -30,7 +31,7 @@ type AuthParams struct {
 	CollectorCredentials string
 }
 
-func (ap AuthParams) GetCredentials(method, resourcePath string, body []byte) string {
+func (ap AuthParams) GetCredentials(method, resourcePath string, body []byte) (string, error) {
 	accessID := ap.AccessID
 	if accessID == "" {
 		accessID = os.Getenv("LOGICMONITOR_ACCESS_ID")
@@ -44,13 +45,13 @@ func (ap AuthParams) GetCredentials(method, resourcePath string, body []byte) st
 		bearerToken = os.Getenv("LOGICMONITOR_BEARER_TOKEN")
 	}
 	if accessID != "" && accessKey != "" {
-		return generateLMv1Token(method, accessID, accessKey, body, resourcePath).String()
+		return generateLMv1Token(method, accessID, accessKey, body, resourcePath).String(), nil
 	} else if bearerToken != "" {
-		return bearerToken
+		return bearerToken, nil
 	} else if ap.CollectorCredentials != "" {
-		return ap.CollectorCredentials
+		return ap.CollectorCredentials, nil
 	}
-	return ""
+	return "", errors.New("GetCredentials: auth token not found")
 }
 
 func (t *Lmv1Token) String() string {
@@ -106,13 +107,13 @@ func URL() (string, error) {
 	company := os.Getenv("LM_ACCOUNT")
 	if company == "" {
 		if company = os.Getenv("LOGICMONITOR_ACCOUNT"); company == "" {
-			return "", fmt.Errorf("Environment variable `LM_ACCOUNT` or `LOGICMONITOR_ACCOUNT` must be provided")
+			return "", errors.New("environment variable `LM_ACCOUNT` or `LOGICMONITOR_ACCOUNT` must be provided")
 		}
 	}
 	if company != "" {
 		match, _ := regexp.MatchString(REGEX_COMPANY_NAME, company)
 		if !match {
-			return "", fmt.Errorf("Invalid Company Name")
+			return "", fmt.Errorf("invalid Company Name: %s", company)
 		}
 	}
 	return fmt.Sprintf(ingestURL, company), nil

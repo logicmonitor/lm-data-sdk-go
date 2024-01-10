@@ -47,10 +47,11 @@ type LMLogIngest struct {
 	rateLimiter        rateLimiter.RateLimiter
 	batch              *logsBatch
 	resourceMappingOp  string
+	userAgent          string
 }
 
-type LMLogIngestRequest struct {
-	Payload []model.LogPayload
+type lmLogIngestRequest struct {
+	payload []model.LogPayload
 }
 
 type LMLogIngestResponse struct {
@@ -60,9 +61,24 @@ type LMLogIngestResponse struct {
 	RequestID uuid.UUID                `json:"requestId"`
 }
 
+type SendLogResponse struct {
+	StatusCode int    `json:"statusCode"`
+	Success    bool   `json:"success"`
+	Message    string `json:"message"`
+
+	RequestID  uuid.UUID `json:"requestId"`
+	RetryAfter int       `json:"retryAfter"`
+
+	Error       error `json:"error"`
+	MultiStatus []struct {
+		Code  float64 `json:"code"`
+		Error string  `json:"error"`
+	} `json:"multiStatus"`
+}
+
 type logsBatch struct {
 	enabled  bool
-	data     []*LMLogIngestRequest
+	data     []*lmLogIngestRequest
 	interval time.Duration
 	lock     *sync.Mutex
 }
@@ -79,6 +95,7 @@ func NewLMLogIngest(ctx context.Context, opts ...Option) (*LMLogIngest, error) {
 		auth:               utils.AuthParams{},
 		rateLimiterSetting: rateLimiter.LogRateLimiterSetting{},
 		batch:              NewLogBatch(),
+		userAgent:          utils.BuildUserAgent(),
 	}
 
 	for _, opt := range opts {
@@ -91,7 +108,7 @@ func NewLMLogIngest(ctx context.Context, opts ...Option) (*LMLogIngest, error) {
 	if logIngest.url == "" {
 		logsURL, err := utils.URL()
 		if err != nil {
-			return nil, fmt.Errorf("error in forming Logs URL: %v", err)
+			return nil, fmt.Errorf("NewLMLogIngest: error in creating log ingestion URL: %v", err)
 		}
 		logIngest.url = logsURL
 	}
@@ -119,7 +136,7 @@ func (logIngest *LMLogIngest) processBatch(ctx context.Context) {
 			if req == nil {
 				continue
 			}
-			_, err := logIngest.export(req, logIngest.uri(), http.MethodPost)
+			_, err := logIngest.export(req)
 			if err != nil {
 				log.Println(err)
 			}
@@ -128,7 +145,7 @@ func (logIngest *LMLogIngest) processBatch(ctx context.Context) {
 }
 
 // SendLogs is the entry point for receiving log data
-func (logIngest *LMLogIngest) SendLogs(ctx context.Context, body []model.LogInput, o ...SendLogsOptionalParameters) (*model.IngestResponse, error) {
+func (logIngest *LMLogIngest) SendLogs(ctx context.Context, body []model.LogInput, o ...SendLogsOptionalParameters) (*SendLogResponse, error) {
 	req, err := logIngest.buildLogRequest(ctx, body, o...)
 	if err != nil {
 		return nil, err
@@ -137,13 +154,13 @@ func (logIngest *LMLogIngest) SendLogs(ctx context.Context, body []model.LogInpu
 		logIngest.batch.pushToBatch(req)
 		return nil, nil
 	}
-	return logIngest.export(req, logIngestURI, http.MethodPost)
+	return logIngest.export(req)
 }
 
 // buildLogRequest creates LMLogIngestRequest
-func (logIngest *LMLogIngest) buildLogRequest(ctx context.Context, body []model.LogInput, o ...SendLogsOptionalParameters) (*LMLogIngestRequest, error) {
+func (logIngest *LMLogIngest) buildLogRequest(ctx context.Context, body []model.LogInput, o ...SendLogsOptionalParameters) (*lmLogIngestRequest, error) {
 	payload := buildLogPayload(body, logIngest.resourceMappingOp)
-	return &LMLogIngestRequest{Payload: payload}, nil
+	return &lmLogIngestRequest{payload: payload}, nil
 }
 
 // buildLogPayload creates log payload from the received LogInput
@@ -248,7 +265,7 @@ func parseMessageFromMetadata(metadata map[string]interface{}, body map[string]i
 }
 
 // pushToBatch adds incoming log requests to batch
-func (batch *logsBatch) pushToBatch(req *LMLogIngestRequest) {
+func (batch *logsBatch) pushToBatch(req *lmLogIngestRequest) {
 	batch.lock.Lock()
 	defer batch.lock.Unlock()
 	batch.data = append(batch.data, req)
@@ -259,13 +276,8 @@ func (batch *logsBatch) batchInterval() time.Duration {
 	return batch.interval
 }
 
-// uri returns the endpoint/uri of log ingest API
-func (logIngest *LMLogIngest) uri() string {
-	return logIngestURI
-}
-
 // combineBatchedLogRequests prepares log payload from the requests present in batch after batch interval expires
-func (batch *logsBatch) combineBatchedLogRequests() *LMLogIngestRequest {
+func (batch *logsBatch) combineBatchedLogRequests() *lmLogIngestRequest {
 	var combinedPayload []model.LogPayload
 
 	batch.lock.Lock()
@@ -275,42 +287,66 @@ func (batch *logsBatch) combineBatchedLogRequests() *LMLogIngestRequest {
 		return nil
 	}
 	for _, req := range batch.data {
-		combinedPayload = append(combinedPayload, req.Payload...)
+		combinedPayload = append(combinedPayload, req.payload...)
 	}
 	// flushing out log batch
 	if batch.enabled {
 		batch.data = nil
 	}
-	return &LMLogIngestRequest{Payload: combinedPayload}
+	return &lmLogIngestRequest{payload: combinedPayload}
 }
 
 // export exports logs to the LM platform
-func (logIngest *LMLogIngest) export(req *LMLogIngestRequest, uri, method string) (*model.IngestResponse, error) {
-	if len(req.Payload) == 0 {
+func (logIngest *LMLogIngest) export(req *lmLogIngestRequest) (*SendLogResponse, error) {
+	if len(req.payload) == 0 {
 		return nil, nil
 	}
-	body, err := json.Marshal(req.Payload)
+	body, err := json.Marshal(req.payload)
 	if err != nil {
-		return nil, fmt.Errorf("error in marshaling log payload: %v", err)
+		return nil, err
 	}
-	token := logIngest.auth.GetCredentials(method, uri, body)
+	token, err := logIngest.auth.GetCredentials(http.MethodPost, logIngestURI, body)
+	if err != nil {
+		return nil, fmt.Errorf("LMLogIngest.export: failed to get auth credentials: %w", err)
+	}
 
 	cfg := client.RequestConfig{
 		Client:      logIngest.client,
 		RateLimiter: logIngest.rateLimiter,
 		Url:         logIngest.url,
 		Body:        body,
-		Uri:         logIngest.uri(),
-		Method:      method,
+		Uri:         logIngestURI,
+		Method:      http.MethodPost,
 		Token:       token,
 		Gzip:        logIngest.gzip,
+		UserAgent:   logIngest.userAgent,
 	}
 
-	resp, err := client.DoRequest(context.Background(), cfg, handleLogsExportResponse)
+	resp, err := client.DoRequest(context.Background(), cfg)
 	if err != nil {
-		return resp, fmt.Errorf("error while exporting logs: %w", err)
+		return nil, fmt.Errorf("LMLogIngest.export: logs export request failed: %w", err)
 	}
-	return resp, nil
+	parsedResp, err := readResponse(resp)
+	if err != nil {
+		return nil, fmt.Errorf("LMLogIngest.export: failed to read response: %w", err)
+	}
+
+	sendLogResp := &SendLogResponse{
+		StatusCode: parsedResp.StatusCode,
+		Success:    parsedResp.Success,
+		Message:    parsedResp.Message,
+
+		Error:       parsedResp.Error,
+		MultiStatus: parsedResp.MultiStatus,
+
+		RequestID:  parsedResp.RequestID,
+		RetryAfter: parsedResp.RetryAfter,
+	}
+
+	if !parsedResp.Success {
+		return sendLogResp, fmt.Errorf("LMLogIngest.export: failed to export logs: %w", parsedResp.Error)
+	}
+	return sendLogResp, nil
 }
 
 // getMessageMetadataKeys returns the metadata keys in which message property can be found
@@ -318,8 +354,8 @@ func getMessageMetadataKeys() []string {
 	return []string{"azure.properties"}
 }
 
-// handleLogsExportResponse handles the http response returned by LM platform
-func handleLogsExportResponse(ctx context.Context, resp *http.Response) (*model.IngestResponse, error) {
+// readResponse reads the http response returned by LM platform
+func readResponse(resp *http.Response) (*model.LogsIngestAPIResponse, error) {
 	defer func() {
 		// Discard any remaining response body when we are done reading.
 		io.CopyN(io.Discard, resp.Body, maxHTTPResponseReadBytes) // nolint:errcheck
@@ -330,21 +366,21 @@ func handleLogsExportResponse(ctx context.Context, resp *http.Response) (*model.
 
 	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusAccepted {
 		// Request is successful.
-		return &model.IngestResponse{
+		return &model.LogsIngestAPIResponse{
 			StatusCode: resp.StatusCode,
 			Success:    true,
 			RequestID:  requestId,
 		}, nil
 	}
 
-	parsedResponse := readResponse(resp)
+	parsedResponse := decodeResponse(resp)
 
-	apiCallResponse := &model.IngestResponse{StatusCode: resp.StatusCode}
+	apiCallResponse := &model.LogsIngestAPIResponse{StatusCode: resp.StatusCode}
 
-	// Format the error message.
 	var formattedErr error
+	var respErr error
+
 	if parsedResponse != nil {
-		var err error
 		// error codes: https://www.logicmonitor.com/support/lm-logs/sending-logs-to-the-lm-logs-ingestion-api
 		if resp.StatusCode == http.StatusMultiStatus {
 			errs := []error{}
@@ -362,16 +398,16 @@ func handleLogsExportResponse(ctx context.Context, resp *http.Response) (*model.
 					errs = append(errs, fmt.Errorf("error code: [%d], error message: %s", int(responseError["code"].(float64)), responseError["error"].(string)))
 				}
 			}
-			err = multierr.Combine(errs...)
+			respErr = multierr.Combine(errs...)
 		} else {
-			err = errors.New(parsedResponse.Message)
+			respErr = errors.New(parsedResponse.Message)
 		}
 		formattedErr = fmt.Errorf(
-			"error exporting items, request to %s responded with HTTP Status Code %d, Message: %s, Details=%s",
-			resp.Request.URL, resp.StatusCode, parsedResponse.Message, err.Error())
+			"readResponse: error exporting items, request to %s responded with HTTP Status Code %d, Message: %s, Details=%s",
+			resp.Request.URL, resp.StatusCode, parsedResponse.Message, respErr.Error())
 	} else {
 		formattedErr = fmt.Errorf(
-			"error exporting items, request to %s responded with HTTP Status Code %d",
+			"readResponse: error exporting items, request to %s responded with HTTP Status Code %d",
 			resp.Request.URL, resp.StatusCode)
 	}
 	apiCallResponse.Error = formattedErr
@@ -388,8 +424,8 @@ func handleLogsExportResponse(ctx context.Context, resp *http.Response) (*model.
 
 // Read the response and decode
 // Returns nil if the response is empty or cannot be decoded.
-func readResponse(resp *http.Response) *LMLogIngestResponse {
-	var lmLogIngestResponse *LMLogIngestResponse
+func decodeResponse(resp *http.Response) *LMLogIngestResponse {
+	var logIngestResponse *LMLogIngestResponse
 	// error codes: https://www.logicmonitor.com/support/lm-logs/sending-logs-to-the-lm-logs-ingestion-api
 	if resp.StatusCode == 207 || (resp.StatusCode >= 400 && resp.StatusCode <= 599) {
 		// Request failed. Read the body.
@@ -400,12 +436,12 @@ func readResponse(resp *http.Response) *LMLogIngestResponse {
 		respBytes := make([]byte, maxRead)
 		n, err := io.ReadFull(resp.Body, respBytes)
 		if err == nil && n > 0 {
-			lmLogIngestResponse = &LMLogIngestResponse{}
-			err = json.Unmarshal(respBytes, lmLogIngestResponse)
+			logIngestResponse = &LMLogIngestResponse{}
+			err = json.Unmarshal(respBytes, logIngestResponse)
 			if err != nil {
-				lmLogIngestResponse = nil
+				logIngestResponse = nil
 			}
 		}
 	}
-	return lmLogIngestResponse
+	return logIngestResponse
 }

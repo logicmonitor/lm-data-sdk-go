@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/logicmonitor/lm-data-sdk-go/api/logs"
@@ -21,7 +22,7 @@ func main() {
 
 	lmLog, err := logs.NewLMLogIngest(context.Background(), options...)
 	if err != nil {
-		fmt.Println("Error in initilaizing log ingest ", err)
+		fmt.Fprintf(os.Stderr, "Error when initializing log client: %v", err)
 		return
 	}
 
@@ -32,8 +33,7 @@ func main() {
 	logInput := translator.ConvertToLMLogInput(logMessage, utils.NewTimestampFromTime(time.Now()).String(), resourceIDs, metadata)
 	_, err = lmLog.SendLogs(context.Background(), []model.LogInput{logInput})
 	if err != nil {
-		fmt.Println("Error in sending log: ", err)
+		fmt.Fprintf(os.Stderr, "Error in sending log: %v", err)
 	}
-
 	time.Sleep(10 * time.Second)
 }

@@ -1,17 +1,20 @@
 package utils
 
 import (
+	"fmt"
 	"runtime"
 )
 
 const (
-	PACKAGE_ID      = "lm-data-sdk-go/"
-	PACKAGE_VERSION = "0.3.0"
-	OS_NAME         = runtime.GOOS
-	ARCH            = runtime.GOARCH
+	PackageID      = "lm-data-sdk-go"
+	PackageVersion = "1.2.0"
 )
 
 func BuildUserAgent() string {
-	userAgent := PACKAGE_ID + PACKAGE_VERSION + ";" + runtime.Version() + ";" + OS_NAME + ";arch " + ARCH
-	return userAgent
+	return fmt.Sprintf("%s/%s;%s;%s;%s",
+		PackageID, PackageVersion,
+		runtime.Version(),
+		runtime.GOOS,
+		runtime.GOARCH,
+	)
 }

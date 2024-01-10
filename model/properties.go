@@ -1,6 +1,6 @@
 package model
 
-type UpdateProperties struct {
+type UpdatePropertiesPayload struct {
 	ResourceName          string            `json:"resourceName"`
 	ResourceID            map[string]string `json:"resourceIds"`
 	ResourceProperties    map[string]string `json:"resourceProperties"`

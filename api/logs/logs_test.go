@@ -8,23 +8,25 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/logicmonitor/lm-data-sdk-go/internal/testutil"
 	"github.com/logicmonitor/lm-data-sdk-go/model"
 	rateLimiter "github.com/logicmonitor/lm-data-sdk-go/pkg/ratelimiter"
 	"github.com/logicmonitor/lm-data-sdk-go/utils"
 	"github.com/logicmonitor/lm-data-sdk-go/utils/translator"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewLMLogIngest(t *testing.T) {
 
+	testutil.SetTestLMEnvVars()
+	defer testutil.CleanupTestLMEnvVars()
+
 	t.Run("should return LogIngest instance with default values", func(t *testing.T) {
-		setLMEnv()
-		defer cleanupLMEnv()
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -38,8 +40,6 @@ func TestNewLMLogIngest(t *testing.T) {
 	})
 
 	t.Run("should return LogIngest instance with options applied", func(t *testing.T) {
-		setLMEnv()
-		defer cleanupLMEnv()
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -52,6 +52,10 @@ func TestNewLMLogIngest(t *testing.T) {
 }
 
 func TestSendLogs(t *testing.T) {
+
+	testutil.SetTestLMEnvVars()
+	defer testutil.CleanupTestLMEnvVars()
+
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := LMLogIngestResponse{
 			Success: true,
@@ -64,9 +68,6 @@ func TestSendLogs(t *testing.T) {
 	defer ts.Close()
 
 	t.Run("send logs without batching", func(t *testing.T) {
-		setLMEnv()
-		defer cleanupLMEnv()
-
 		rateLimiter, _ := rateLimiter.NewLogRateLimiter(rateLimiter.LogRateLimiterSetting{RequestCount: 100})
 
 		e := &LMLogIngest{
@@ -82,14 +83,12 @@ func TestSendLogs(t *testing.T) {
 		metadata := map[string]interface{}{"test": "metadata"}
 
 		payload := translator.ConvertToLMLogInput(message, time.Now().String(), resourceId, metadata)
-		_, err := e.SendLogs(context.Background(), []model.LogInput{payload})
+		resp, err := e.SendLogs(context.Background(), []model.LogInput{payload})
 		assert.NoError(t, err)
+		assert.True(t, resp.Success)
 	})
 
 	t.Run("send logs with batching enabled", func(t *testing.T) {
-		setLMEnv()
-		defer cleanupLMEnv()
-
 		rateLimiter, _ := rateLimiter.NewLogRateLimiter(rateLimiter.LogRateLimiterSetting{RequestCount: 100})
 		e := &LMLogIngest{
 			client:      ts.Client(),
@@ -171,66 +170,8 @@ func TestCombineBatchedLogRequests(t *testing.T) {
 		logIngest.batch.pushToBatch(req)
 
 		combinedReq := logIngest.batch.combineBatchedLogRequests()
-		assert.Equal(t, 3, len(combinedReq.Payload))
+		assert.Equal(t, 3, len(combinedReq.payload))
 	})
-}
-
-func BenchmarkSendLogs(b *testing.B) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := LMLogIngestResponse{
-			Success: true,
-			Message: "Accepted",
-		}
-		assert.NoError(b, json.NewEncoder(w).Encode(&response))
-	}))
-
-	type args struct {
-		log        string
-		resourceId map[string]interface{}
-		metadata   map[string]interface{}
-	}
-
-	type fields struct {
-		client *http.Client
-		url    string
-		auth   utils.AuthParams
-	}
-
-	test := struct {
-		name   string
-		fields fields
-		args   args
-	}{
-		name: "Test log export without batching",
-		fields: fields{
-			client: ts.Client(),
-			url:    ts.URL,
-			auth:   utils.AuthParams{},
-		},
-		args: args{
-			log:        "This is test message",
-			resourceId: map[string]interface{}{"test": "resource"},
-			metadata:   map[string]interface{}{"test": "metadata"},
-		},
-	}
-	setLMEnv()
-	defer cleanupLMEnv()
-
-	for i := 0; i < b.N; i++ {
-		rateLimiter, _ := rateLimiter.NewLogRateLimiter(rateLimiter.LogRateLimiterSetting{RequestCount: 350})
-		e := &LMLogIngest{
-			client:      test.fields.client,
-			url:         test.fields.url,
-			auth:        test.fields.auth,
-			rateLimiter: rateLimiter,
-		}
-		payload := translator.ConvertToLMLogInput(test.args.log, time.Now().String(), test.args.resourceId, test.args.metadata)
-		_, err := e.SendLogs(context.Background(), []model.LogInput{payload})
-		if err != nil {
-			fmt.Print(err)
-			return
-		}
-	}
 }
 
 func TestBuildPayload(t *testing.T) {
@@ -345,20 +286,20 @@ func TestBuildPayload(t *testing.T) {
 	}
 }
 
-func TestHandleLogsExportResponse(t *testing.T) {
-	t.Run("should handle success response", func(t *testing.T) {
-		ingestResponse, err := handleLogsExportResponse(context.Background(), &http.Response{
+func TestReadResponse(t *testing.T) {
+	t.Run("success response", func(t *testing.T) {
+		ingestResponse, err := readResponse(&http.Response{
 			StatusCode: http.StatusAccepted,
 			Body:       ioutil.NopCloser(bytes.NewBufferString("Accepted")),
 		})
-		assert.NoError(t, err)
-		assert.Equal(t, model.IngestResponse{
+		require.NoError(t, err)
+		assert.Equal(t, model.LogsIngestAPIResponse{
 			Success:    true,
 			StatusCode: http.StatusAccepted,
 		}, *ingestResponse)
 	})
 
-	t.Run("should handle multi-status response", func(t *testing.T) {
+	t.Run("multi-status response", func(t *testing.T) {
 		data := []byte(`{
 			"success": false,
 			"message": "Some events were not accepted. See the 'errors' property for additional information.",
@@ -375,14 +316,14 @@ func TestHandleLogsExportResponse(t *testing.T) {
 			  }
 			]
 		  }`)
-		ingestResponse, err := handleLogsExportResponse(context.Background(), &http.Response{
+		ingestResponse, err := readResponse(&http.Response{
 			StatusCode:    http.StatusMultiStatus,
 			ContentLength: int64(len(data)),
 			Request:       httptest.NewRequest(http.MethodPost, "https://example.logicmonitor.com"+logIngestURI, nil),
 			Body:          ioutil.NopCloser(bytes.NewReader(data)),
 		})
-		assert.NoError(t, err)
-		assert.Equal(t, model.IngestResponse{
+		require.NoError(t, err)
+		assert.Equal(t, model.LogsIngestAPIResponse{
 			Success:    false,
 			StatusCode: http.StatusMultiStatus,
 			MultiStatus: []struct {
@@ -394,39 +335,86 @@ func TestHandleLogsExportResponse(t *testing.T) {
 					Error: "Resource not found",
 				},
 			},
-			Error:   fmt.Errorf("error exporting items, request to https://example.logicmonitor.com/log/ingest responded with HTTP Status Code 207, Message: Some events were not accepted. See the 'errors' property for additional information., Details=error code: [4001], error message: Resource not found"),
+			Error:   fmt.Errorf("readResponse: error exporting items, request to https://example.logicmonitor.com/log/ingest responded with HTTP Status Code 207, Message: Some events were not accepted. See the 'errors' property for additional information., Details=error code: [4001], error message: Resource not found"),
 			Message: "Some events were not accepted. See the 'errors' property for additional information.",
 		}, *ingestResponse)
 	})
 
-	t.Run("should handle non multi-status response", func(t *testing.T) {
+	t.Run("non multi-status error response", func(t *testing.T) {
 		data := []byte(`{
 			"success": false,
 			"message": "Too Many Requests"
 		  }`)
-		ingestResponse, err := handleLogsExportResponse(context.Background(), &http.Response{
+		ingestResponse, err := readResponse(&http.Response{
 			StatusCode:    http.StatusTooManyRequests,
 			ContentLength: int64(len(data)),
 			Request:       httptest.NewRequest(http.MethodPost, "https://example.logicmonitor.com"+logIngestURI, nil),
 			Body:          ioutil.NopCloser(bytes.NewReader(data)),
 		})
-		assert.NoError(t, err)
-		assert.Equal(t, model.IngestResponse{
+		require.NoError(t, err)
+		assert.Equal(t, model.LogsIngestAPIResponse{
 			Success:    false,
 			StatusCode: http.StatusTooManyRequests,
-			Error:      fmt.Errorf("error exporting items, request to https://example.logicmonitor.com/log/ingest responded with HTTP Status Code 429, Message: Too Many Requests, Details=Too Many Requests"),
+			Error:      fmt.Errorf("readResponse: error exporting items, request to https://example.logicmonitor.com/log/ingest responded with HTTP Status Code 429, Message: Too Many Requests, Details=Too Many Requests"),
 		}, *ingestResponse)
 	})
 }
 
-func setLMEnv() {
-	os.Setenv("LOGICMONITOR_ACCOUNT", "testenv")
-	os.Setenv("LOGICMONITOR_ACCESS_ID", "weryuifsjkf")
-	os.Setenv("LOGICMONITOR_ACCESS_KEY", "@dfsd4FDf999999FDE")
-}
+func BenchmarkSendLogs(b *testing.B) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		response := LMLogIngestResponse{
+			Success: true,
+			Message: "Accepted",
+		}
+		assert.NoError(b, json.NewEncoder(w).Encode(&response))
+	}))
 
-func cleanupLMEnv() {
-	os.Unsetenv("LOGICMONITOR_ACCOUNT")
-	os.Unsetenv("LOGICMONITOR_ACCESS_ID")
-	os.Unsetenv("LOGICMONITOR_ACCESS_KEY")
+	type args struct {
+		log        string
+		resourceId map[string]interface{}
+		metadata   map[string]interface{}
+	}
+
+	type fields struct {
+		client *http.Client
+		url    string
+		auth   utils.AuthParams
+	}
+
+	test := struct {
+		name   string
+		fields fields
+		args   args
+	}{
+		name: "Test log export without batching",
+		fields: fields{
+			client: ts.Client(),
+			url:    ts.URL,
+			auth:   utils.AuthParams{},
+		},
+		args: args{
+			log:        "This is test message",
+			resourceId: map[string]interface{}{"test": "resource"},
+			metadata:   map[string]interface{}{"test": "metadata"},
+		},
+	}
+
+	testutil.SetTestLMEnvVars()
+	defer testutil.CleanupTestLMEnvVars()
+
+	for i := 0; i < b.N; i++ {
+		rateLimiter, _ := rateLimiter.NewLogRateLimiter(rateLimiter.LogRateLimiterSetting{RequestCount: 350})
+		e := &LMLogIngest{
+			client:      test.fields.client,
+			url:         test.fields.url,
+			auth:        test.fields.auth,
+			rateLimiter: rateLimiter,
+		}
+		payload := translator.ConvertToLMLogInput(test.args.log, time.Now().String(), test.args.resourceId, test.args.metadata)
+		_, err := e.SendLogs(context.Background(), []model.LogInput{payload})
+		if err != nil {
+			fmt.Print(err)
+			return
+		}
+	}
 }

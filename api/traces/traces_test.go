@@ -8,15 +8,16 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/logicmonitor/lm-data-sdk-go/internal/testutil"
 	"github.com/logicmonitor/lm-data-sdk-go/model"
 	rateLimiter "github.com/logicmonitor/lm-data-sdk-go/pkg/ratelimiter"
 	"github.com/logicmonitor/lm-data-sdk-go/utils"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 )
@@ -33,9 +34,11 @@ var (
 )
 
 func TestNewLMTraceIngest(t *testing.T) {
+
+	testutil.SetTestLMEnvVars()
+	defer testutil.CleanupTestLMEnvVars()
+
 	t.Run("should return Trace Ingest instance with default values", func(t *testing.T) {
-		setLMEnv()
-		defer cleanupLMEnv()
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -49,8 +52,6 @@ func TestNewLMTraceIngest(t *testing.T) {
 	})
 
 	t.Run("should return Trace Ingest instance with options applied", func(t *testing.T) {
-		setLMEnv()
-		defer cleanupLMEnv()
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -63,6 +64,10 @@ func TestNewLMTraceIngest(t *testing.T) {
 }
 
 func TestSendTraces(t *testing.T) {
+
+	testutil.SetTestLMEnvVars()
+	defer testutil.CleanupTestLMEnvVars()
+
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := LMTraceIngestResponse{
 			Success: true,
@@ -75,8 +80,6 @@ func TestSendTraces(t *testing.T) {
 	defer ts.Close()
 
 	t.Run("send traces without batching", func(t *testing.T) {
-		setLMEnv()
-		defer cleanupLMEnv()
 
 		rateLimiter, _ := rateLimiter.NewLogRateLimiter(rateLimiter.LogRateLimiterSetting{RequestCount: 100})
 
@@ -88,13 +91,12 @@ func TestSendTraces(t *testing.T) {
 			batch:       &traceBatch{enabled: false},
 		}
 
-		_, err := e.SendTraces(context.Background(), createTraceData())
+		resp, err := e.SendTraces(context.Background(), createTraceData())
 		assert.NoError(t, err)
+		assert.True(t, resp.Success)
 	})
 
 	t.Run("send traces with batching enabled", func(t *testing.T) {
-		setLMEnv()
-		defer cleanupLMEnv()
 
 		rateLimiter, _ := rateLimiter.NewLogRateLimiter(rateLimiter.LogRateLimiterSetting{RequestCount: 100})
 		e := &LMTraceIngest{
@@ -102,7 +104,7 @@ func TestSendTraces(t *testing.T) {
 			url:         ts.URL,
 			auth:        utils.AuthParams{},
 			rateLimiter: rateLimiter,
-			batch:       &traceBatch{enabled: true, interval: 1 * time.Second, lock: &sync.Mutex{}, data: &LMTraceIngestRequest{TracesPayload: model.TracesPayload{TraceData: ptrace.NewTraces()}}},
+			batch:       &traceBatch{enabled: true, interval: 1 * time.Second, lock: &sync.Mutex{}, data: &lmTraceIngestRequest{tracesPayload: model.TracesPayload{TraceData: ptrace.NewTraces()}}},
 		}
 		_, err := e.SendTraces(context.Background(), createTraceData())
 		assert.NoError(t, err)
@@ -119,115 +121,48 @@ func TestPushToBatch(t *testing.T) {
 		req, err := traceIngest.buildTracesRequest(context.Background(), createTraceData())
 		assert.NoError(t, err)
 
-		before := traceIngest.batch.data.TracesPayload.TraceData.SpanCount()
+		before := traceIngest.batch.data.tracesPayload.TraceData.SpanCount()
 
 		traceIngest.batch.pushToBatch(req)
 
 		expectedSpanCount := before + testData.SpanCount()
 
-		assert.Equal(t, expectedSpanCount, traceIngest.batch.data.TracesPayload.TraceData.SpanCount())
+		assert.Equal(t, expectedSpanCount, traceIngest.batch.data.tracesPayload.TraceData.SpanCount())
 	})
 }
 
-func TestHandleTracesExportResponse(t *testing.T) {
-	t.Run("should handle success response", func(t *testing.T) {
-		ingestResponse, err := handleTraceExportResponse(context.Background(), &http.Response{
+func TestReadResponse(t *testing.T) {
+	t.Run("success response", func(t *testing.T) {
+		ingestResponse, err := readResponse(&http.Response{
 			StatusCode: http.StatusAccepted,
 			Body:       ioutil.NopCloser(bytes.NewBufferString("Accepted")),
 		})
-		assert.NoError(t, err)
-		assert.Equal(t, model.IngestResponse{
+		require.NoError(t, err)
+		assert.Equal(t, model.TraceIngestAPIResponse{
 			Success:    true,
 			StatusCode: http.StatusAccepted,
 		}, *ingestResponse)
 	})
 
-	t.Run("should handle non multi-status response", func(t *testing.T) {
+	t.Run("non multi-status error response", func(t *testing.T) {
 		data := []byte(`{
 			"success": false,
 			"message": "Too Many Requests"
 		  }`)
-		ingestResponse, err := handleTraceExportResponse(context.Background(), &http.Response{
+		ingestResponse, err := readResponse(&http.Response{
 			StatusCode:    http.StatusTooManyRequests,
 			ContentLength: int64(len(data)),
 			Request:       httptest.NewRequest(http.MethodPost, "https://example.logicmonitor.com"+otlpTraceIngestURI, nil),
 			Body:          ioutil.NopCloser(bytes.NewReader(data)),
 		})
-		assert.NoError(t, err)
-		assert.Equal(t, model.IngestResponse{
+		require.NoError(t, err)
+		assert.Equal(t, model.TraceIngestAPIResponse{
 			Success:    false,
 			StatusCode: http.StatusTooManyRequests,
-			Error:      fmt.Errorf("error exporting items, request to https://example.logicmonitor.com%s responded with HTTP Status Code 429, Message=Too Many Requests", otlpTraceIngestURI),
+			Error:      fmt.Errorf("readResponse: error exporting items, request to https://example.logicmonitor.com%s responded with HTTP Status Code 429, Message=Too Many Requests", otlpTraceIngestURI),
 		}, *ingestResponse)
 	})
 }
-
-func setLMEnv() {
-	os.Setenv("LOGICMONITOR_ACCOUNT", "testenv")
-	os.Setenv("LOGICMONITOR_ACCESS_ID", "weryuifsjkf")
-	os.Setenv("LOGICMONITOR_ACCESS_KEY", "@dfsd4FDf999999FDE")
-}
-
-func cleanupLMEnv() {
-	os.Unsetenv("LOGICMONITOR_ACCOUNT")
-	os.Unsetenv("LOGICMONITOR_ACCESS_ID")
-	os.Unsetenv("LOGICMONITOR_ACCESS_KEY")
-}
-
-// func BenchmarkSendTraces(b *testing.B) {
-// 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-// 		response := utils.Response{
-// 			Success: true,
-// 			Message: "Traces exported successfully!!",
-// 		}
-// 		body, _ := json.Marshal(response)
-// 		time.Sleep(10 * time.Millisecond)
-// 		w.Write(body)
-// 	}))
-
-// 	type args struct {
-// 		traceData ptrace.Traces
-// 	}
-
-// 	type fields struct {
-// 		client *http.Client
-// 		url    string
-// 		auth   utils.AuthParams
-// 	}
-
-// 	test := struct {
-// 		name   string
-// 		fields fields
-// 		args   args
-// 	}{
-// 		name: "Test trace export without batching",
-// 		fields: fields{
-// 			client: ts.Client(),
-// 			url:    ts.URL,
-// 			auth:   utils.AuthParams{},
-// 		},
-// 		args: args{
-// 			traceData: createTraceData(),
-// 		},
-// 	}
-// 	setLMEnv()
-// 	defer cleanupLMEnv()
-
-// 	for i := 0; i < b.N; i++ {
-// 		rateLimiter, _ := rateLimiter.NewTraceRateLimiter(rateLimiter.RateLimiterSetting{RequestCount: 350})
-// 		e := &LMTraceIngest{
-// 			client:      test.fields.client,
-// 			url:         test.fields.url,
-// 			auth:        test.fields.auth,
-// 			rateLimiter: rateLimiter,
-// 		}
-// 		err := e.SendTraces(context.Background(), test.args.traceData)
-// 		if err != nil {
-// 			fmt.Print(err)
-// 			return
-// 		}
-// 	}
-// }
 
 func createTraceData() ptrace.Traces {
 	td := GenerateTracesOneEmptyInstrumentationLibrary()

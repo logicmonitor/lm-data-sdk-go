@@ -36,8 +36,8 @@ type LMTraceIngest struct {
 	batch              *traceBatch
 }
 
-type LMTraceIngestRequest struct {
-	TracesPayload model.TracesPayload
+type lmTraceIngestRequest struct {
+	tracesPayload model.TracesPayload
 }
 
 type LMTraceIngestResponse struct {
@@ -45,9 +45,23 @@ type LMTraceIngestResponse struct {
 	Message string `json:"message"`
 }
 
+type SendTraceResponse struct {
+	StatusCode int    `json:"statusCode"`
+	Success    bool   `json:"success"`
+	Message    string `json:"message"`
+
+	RetryAfter int `json:"retryAfter"`
+
+	Error       error `json:"error"`
+	MultiStatus []struct {
+		Code  float64 `json:"code"`
+		Error string  `json:"error"`
+	} `json:"multiStatus"`
+}
+
 type traceBatch struct {
 	enabled  bool
-	data     *LMTraceIngestRequest
+	data     *lmTraceIngestRequest
 	interval time.Duration
 	lock     *sync.Mutex
 }
@@ -72,7 +86,7 @@ func NewLMTraceIngest(ctx context.Context, opts ...Option) (*LMTraceIngest, erro
 	if traceIngest.url == "" {
 		tracesURL, err := utils.URL()
 		if err != nil {
-			return nil, fmt.Errorf("error in forming Traces URL: %v", err)
+			return nil, fmt.Errorf("NewLMTraceIngest: failed to create traces URL: %v", err)
 		}
 		traceIngest.url = tracesURL
 	}
@@ -90,7 +104,16 @@ func NewLMTraceIngest(ctx context.Context, opts ...Option) (*LMTraceIngest, erro
 }
 
 func NewTraceBatch() *traceBatch {
-	return &traceBatch{enabled: true, interval: defaultBatchingInterval, lock: &sync.Mutex{}, data: &LMTraceIngestRequest{TracesPayload: model.TracesPayload{TraceData: ptrace.NewTraces()}}}
+	return &traceBatch{
+		enabled:  true,
+		interval: defaultBatchingInterval,
+		lock:     &sync.Mutex{},
+		data: &lmTraceIngestRequest{
+			tracesPayload: model.TracesPayload{
+				TraceData: ptrace.NewTraces(),
+			},
+		},
+	}
 }
 
 func (traceIngest *LMTraceIngest) processBatch(ctx context.Context) {
@@ -103,17 +126,12 @@ func (traceIngest *LMTraceIngest) processBatch(ctx context.Context) {
 			if req == nil {
 				return
 			}
-			_, err := traceIngest.export(req, traceIngest.uri(), http.MethodPost)
+			_, err := traceIngest.export(req)
 			if err != nil {
 				log.Println(err)
 			}
 		}
 	}
-}
-
-// uri returns the endpoint/uri of trace ingest API
-func (traceIngest *LMTraceIngest) uri() string {
-	return otlpTraceIngestURI
 }
 
 // batchInterval returns the time interval for batching
@@ -122,7 +140,7 @@ func (batch *traceBatch) batchInterval() time.Duration {
 }
 
 // SendTraces is the entry point for receiving trace data
-func (traceIngest *LMTraceIngest) SendTraces(ctx context.Context, td ptrace.Traces, o ...SendTracesOptionalParameters) (*model.IngestResponse, error) {
+func (traceIngest *LMTraceIngest) SendTraces(ctx context.Context, td ptrace.Traces, o ...SendTracesOptionalParameters) (*SendTraceResponse, error) {
 	req, err := traceIngest.buildTracesRequest(ctx, td, o...)
 	if err != nil {
 		return nil, err
@@ -132,79 +150,101 @@ func (traceIngest *LMTraceIngest) SendTraces(ctx context.Context, td ptrace.Trac
 		traceIngest.batch.pushToBatch(req)
 		return nil, nil
 	}
-	return traceIngest.export(req, otlpTraceIngestURI, http.MethodPost)
+	return traceIngest.export(req)
 }
 
-func (traceIngest *LMTraceIngest) buildTracesRequest(ctx context.Context, td ptrace.Traces, o ...SendTracesOptionalParameters) (*LMTraceIngestRequest, error) {
+func (traceIngest *LMTraceIngest) buildTracesRequest(ctx context.Context, td ptrace.Traces, o ...SendTracesOptionalParameters) (*lmTraceIngestRequest, error) {
 	tracesPayload := model.TracesPayload{
 		TraceData: td,
 	}
-
-	return &LMTraceIngestRequest{TracesPayload: tracesPayload}, nil
+	return &lmTraceIngestRequest{tracesPayload: tracesPayload}, nil
 }
 
 // pushToBatch adds incoming trace requests to traceBatch internal cache
-func (batch *traceBatch) pushToBatch(req *LMTraceIngestRequest) {
+func (batch *traceBatch) pushToBatch(req *lmTraceIngestRequest) {
 	batch.lock.Lock()
 	defer batch.lock.Unlock()
-	req.TracesPayload.TraceData.ResourceSpans().MoveAndAppendTo(ptrace.ResourceSpansSlice(batch.data.TracesPayload.TraceData.ResourceSpans()))
+	req.tracesPayload.TraceData.ResourceSpans().MoveAndAppendTo(ptrace.ResourceSpansSlice(batch.data.tracesPayload.TraceData.ResourceSpans()))
 }
 
-func (batch *traceBatch) combineBatchedTraceRequests() *LMTraceIngestRequest {
+func (batch *traceBatch) combineBatchedTraceRequests() *lmTraceIngestRequest {
 	batch.lock.Lock()
 	defer batch.lock.Unlock()
 
-	if batch.data.TracesPayload.TraceData.SpanCount() == 0 {
+	if batch.data.tracesPayload.TraceData.SpanCount() == 0 {
 		return nil
 	}
 
-	req := &LMTraceIngestRequest{TracesPayload: batch.data.TracesPayload}
+	req := &lmTraceIngestRequest{tracesPayload: batch.data.tracesPayload}
 
 	// flushing out trace batch
 	if batch.enabled {
-		batch.data.TracesPayload.TraceData = ptrace.NewTraces()
+		batch.data.tracesPayload.TraceData = ptrace.NewTraces()
 	}
 	return req
 }
 
 // export exports trace to the LM platform
-func (traceIngest *LMTraceIngest) export(req *LMTraceIngestRequest, uri, method string) (*model.IngestResponse, error) {
-	if req.TracesPayload.TraceData.SpanCount() == 0 {
+func (traceIngest *LMTraceIngest) export(req *lmTraceIngestRequest) (*SendTraceResponse, error) {
+	if req.tracesPayload.TraceData.SpanCount() == 0 {
 		return nil, nil
 	}
 	headers := make(map[string]string)
 	headers["Content-Type"] = "application/x-protobuf"
 
-	traceData := req.TracesPayload.TraceData
+	traceData := req.tracesPayload.TraceData
 	tr := ptraceotlp.NewExportRequestFromTraces(traceData)
 	body, err := tr.MarshalProto()
 	if err != nil {
 		return nil, err
 	}
 
-	token := traceIngest.auth.GetCredentials(method, traceIngest.uri(), body)
+	token, err := traceIngest.auth.GetCredentials(http.MethodPost, otlpTraceIngestURI, body)
+	if err != nil {
+		return nil, fmt.Errorf("LMTraceIngest.export: failed to get auth credentials: %w", err)
+	}
+
 	cfg := client.RequestConfig{
 		Client:          traceIngest.client,
 		RateLimiter:     traceIngest.rateLimiter,
 		Url:             traceIngest.url,
 		Body:            body,
-		Uri:             traceIngest.uri(),
-		Method:          method,
+		Uri:             otlpTraceIngestURI,
+		Method:          http.MethodPost,
 		Token:           token,
 		Gzip:            traceIngest.gzip,
 		Headers:         headers,
-		PayloadMetadata: rateLimiter.TracePayloadMetadata{RequestSpanCount: uint64(req.TracesPayload.TraceData.SpanCount())},
+		PayloadMetadata: rateLimiter.TracePayloadMetadata{RequestSpanCount: uint64(req.tracesPayload.TraceData.SpanCount())},
 	}
 
-	resp, err := client.DoRequest(context.Background(), cfg, handleTraceExportResponse)
+	resp, err := client.DoRequest(context.Background(), cfg)
 	if err != nil {
-		return resp, fmt.Errorf("error while exporting traces: %w", err)
+		return nil, fmt.Errorf("LMTraceIngest.export: traces export request failed: %w", err)
 	}
-	return resp, nil
+	parsedResp, err := readResponse(resp)
+	if err != nil {
+		return nil, fmt.Errorf("LMTraceIngest.export: failed to read response: %w", err)
+	}
+
+	sendTraceResp := &SendTraceResponse{
+		StatusCode: parsedResp.StatusCode,
+		Success:    parsedResp.Success,
+		Message:    parsedResp.Message,
+
+		Error:       parsedResp.Error,
+		MultiStatus: parsedResp.MultiStatus,
+
+		RetryAfter: parsedResp.RetryAfter,
+	}
+
+	if !sendTraceResp.Success {
+		return sendTraceResp, fmt.Errorf("LMTraceIngest.export: failed to export traces: %w", sendTraceResp.Error)
+	}
+	return sendTraceResp, nil
 }
 
-// handleLogsExportResponse handles the http response returned by LM platform
-func handleTraceExportResponse(ctx context.Context, resp *http.Response) (*model.IngestResponse, error) {
+// readResponse handles the http response returned by LM platform
+func readResponse(resp *http.Response) (*model.TraceIngestAPIResponse, error) {
 	defer func() {
 		// Discard any remaining response body when we are done reading.
 		io.CopyN(io.Discard, resp.Body, maxHTTPResponseReadBytes) // nolint:errcheck
@@ -213,23 +253,23 @@ func handleTraceExportResponse(ctx context.Context, resp *http.Response) (*model
 
 	if resp.StatusCode >= 200 && resp.StatusCode <= 299 {
 		// Request is successful.
-		return &model.IngestResponse{
+		return &model.TraceIngestAPIResponse{
 			StatusCode: resp.StatusCode,
 			Success:    true,
 		}, nil
 	}
 
-	respStatus := readResponse(resp)
+	parsedResponse := decodeResponse(resp)
 
 	// Format the error message. Use the status if it is present in the response.
 	var formattedErr error
-	if respStatus != nil {
+	if parsedResponse != nil {
 		formattedErr = fmt.Errorf(
-			"error exporting items, request to %s responded with HTTP Status Code %d, Message=%s",
-			resp.Request.URL, resp.StatusCode, respStatus.Message)
+			"readResponse: error exporting items, request to %s responded with HTTP Status Code %d, Message=%s",
+			resp.Request.URL, resp.StatusCode, parsedResponse.Message)
 	} else {
 		formattedErr = fmt.Errorf(
-			"error exporting items, request to %s responded with HTTP Status Code %d",
+			"readResponse: error exporting items, request to %s responded with HTTP Status Code %d",
 			resp.Request.URL, resp.StatusCode)
 	}
 	retryAfter := 0
@@ -238,7 +278,7 @@ func handleTraceExportResponse(ctx context.Context, resp *http.Response) (*model
 			retryAfter = seconds
 		}
 	}
-	return &model.IngestResponse{
+	return &model.TraceIngestAPIResponse{
 		StatusCode: resp.StatusCode,
 		Success:    false,
 		Error:      formattedErr,
@@ -248,8 +288,8 @@ func handleTraceExportResponse(ctx context.Context, resp *http.Response) (*model
 
 // Read the response and decode
 // Returns nil if the response is empty or cannot be decoded.
-func readResponse(resp *http.Response) *LMTraceIngestResponse {
-	var lmTraceIngestResponse *LMTraceIngestResponse
+func decodeResponse(resp *http.Response) *LMTraceIngestResponse {
+	var traceIngestResponse *LMTraceIngestResponse
 	if resp.StatusCode >= 400 && resp.StatusCode <= 599 {
 		// Request failed. Read the body.
 		maxRead := resp.ContentLength
@@ -259,12 +299,12 @@ func readResponse(resp *http.Response) *LMTraceIngestResponse {
 		respBytes := make([]byte, maxRead)
 		n, err := io.ReadFull(resp.Body, respBytes)
 		if err == nil && n > 0 {
-			lmTraceIngestResponse = &LMTraceIngestResponse{}
-			err = json.Unmarshal(respBytes, lmTraceIngestResponse)
+			traceIngestResponse = &LMTraceIngestResponse{}
+			err = json.Unmarshal(respBytes, traceIngestResponse)
 			if err != nil {
-				lmTraceIngestResponse = nil
+				traceIngestResponse = nil
 			}
 		}
 	}
-	return lmTraceIngestResponse
+	return traceIngestResponse
 }

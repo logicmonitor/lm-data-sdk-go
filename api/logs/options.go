@@ -80,6 +80,14 @@ func WithResourceMappingOperation(op string) Option {
 	}
 }
 
+// WithUserAgent sets the provided user agent
+func WithUserAgent(userAgent string) Option {
+	return func(logIngest *LMLogIngest) error {
+		logIngest.userAgent = userAgent
+		return nil
+	}
+}
+
 type SendLogsOptionalParameters struct {
 }
 

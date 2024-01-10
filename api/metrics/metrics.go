@@ -8,7 +8,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -43,10 +42,8 @@ type LMMetricIngest struct {
 	batch              *metricBatch
 }
 
-type LMMetricIngestRequest struct {
-	Payload                     []model.MetricPayload
-	PayloadWithResourceCreation []model.MetricPayload
-	UpdatePropertiesPayload     model.UpdateProperties
+type lmMetricIngestRequest struct {
+	payload []model.MetricPayload
 }
 
 type LMMetricIngestResponse struct {
@@ -57,9 +54,45 @@ type LMMetricIngestResponse struct {
 	Errors     []map[string]interface{} `json:"errors"`
 }
 
+type SendMetricResponse struct {
+	StatusCode int    `json:"statusCode"`
+	Success    bool   `json:"success"`
+	Message    string `json:"message"`
+
+	Error       error `json:"error"`
+	MultiStatus []struct {
+		Code  float64 `json:"code"`
+		Error string  `json:"error"`
+	} `json:"multiStatus"`
+}
+
+type UpdateResourcePropertiesResponse struct {
+	StatusCode int    `json:"statusCode"`
+	Success    bool   `json:"success"`
+	Message    string `json:"message"`
+
+	Error       error `json:"error"`
+	MultiStatus []struct {
+		Code  float64 `json:"code"`
+		Error string  `json:"error"`
+	} `json:"multiStatus"`
+}
+
+type UpdateInstancePropertiesResponse struct {
+	StatusCode int    `json:"statusCode"`
+	Success    bool   `json:"success"`
+	Message    string `json:"message"`
+
+	Error       error `json:"error"`
+	MultiStatus []struct {
+		Code  float64 `json:"code"`
+		Error string  `json:"error"`
+	} `json:"multiStatus"`
+}
+
 type metricBatch struct {
 	enabled  bool
-	data     []*LMMetricIngestRequest
+	data     []*lmMetricIngestRequest
 	interval time.Duration
 	lock     *sync.Mutex
 }
@@ -87,7 +120,7 @@ func NewLMMetricIngest(ctx context.Context, opts ...Option) (*LMMetricIngest, er
 	if metricIngest.url == "" {
 		metricsURL, err := utils.URL()
 		if err != nil {
-			return nil, fmt.Errorf("error in forming Metrics URL: %v", err)
+			return nil, fmt.Errorf("NewLMMetricIngest: error in forming Metrics URL: %v", err)
 		}
 		metricIngest.url = metricsURL
 	}
@@ -105,10 +138,10 @@ func NewLMMetricIngest(ctx context.Context, opts ...Option) (*LMMetricIngest, er
 }
 
 // SendMetrics is the entry point for receiving metric data. It also validates the attributes of metrics before creating metric payload.
-func (metricIngest *LMMetricIngest) SendMetrics(ctx context.Context, rInput model.ResourceInput, dsInput model.DatasourceInput, instInput model.InstanceInput, dpInput model.DataPointInput, o ...SendMetricsOptionalParameters) (*model.IngestResponse, error) {
+func (metricIngest *LMMetricIngest) SendMetrics(ctx context.Context, rInput model.ResourceInput, dsInput model.DatasourceInput, instInput model.InstanceInput, dpInput model.DataPointInput, o ...SendMetricsOptionalParameters) (*SendMetricResponse, error) {
 	errorMsg := validator.ValidateAttributes(rInput, dsInput, instInput, dpInput)
 	if errorMsg != "" {
-		return nil, fmt.Errorf("validation failed: %s", errorMsg)
+		return nil, fmt.Errorf("LMMetricIngest.SendMetrics: validation failed: %s", errorMsg)
 	}
 	dsInput, instInput, dpInput = setDefaultValues(dsInput, instInput, dpInput)
 	input := model.MetricsInput{
@@ -126,19 +159,14 @@ func (metricIngest *LMMetricIngest) SendMetrics(ctx context.Context, rInput mode
 		metricIngest.batch.pushToBatch(req)
 		return nil, nil
 	}
-	return metricIngest.export(req, uri, http.MethodPost)
+	return metricIngest.export(req)
 }
 
-func (metricIngest *LMMetricIngest) buildMetricRequest(ctx context.Context, body model.MetricsInput, o ...SendMetricsOptionalParameters) (*LMMetricIngestRequest, error) {
-	metricIngestReq := &LMMetricIngestRequest{}
+func (metricIngest *LMMetricIngest) buildMetricRequest(ctx context.Context, body model.MetricsInput, o ...SendMetricsOptionalParameters) (*lmMetricIngestRequest, error) {
+	metricIngestReq := &lmMetricIngestRequest{}
 
-	payload := append(metricIngestReq.Payload, buildMetricPayload(body))
+	metricIngestReq.payload = append(metricIngestReq.payload, buildMetricPayload(body))
 
-	if body.Resource.IsCreate {
-		metricIngestReq.PayloadWithResourceCreation = payload
-	} else {
-		metricIngestReq.Payload = payload
-	}
 	return metricIngestReq, nil
 }
 
@@ -163,6 +191,8 @@ func buildMetricPayload(metricItem model.MetricsInput) model.MetricPayload {
 		DataSourceGroup:       metricItem.Datasource.DataSourceGroup,
 		DataSourceID:          metricItem.Datasource.DataSourceID,
 		Instances:             append([]model.Instance{}, instance),
+
+		IsCreate: metricItem.Resource.IsCreate,
 	}
 	return payload
 }
@@ -198,7 +228,7 @@ func (batch *metricBatch) batchInterval() time.Duration {
 }
 
 // pushToBatch adds the metric request to batching cache if batching is enabled
-func (batch *metricBatch) pushToBatch(req *LMMetricIngestRequest) {
+func (batch *metricBatch) pushToBatch(req *lmMetricIngestRequest) {
 	batch.lock.Lock()
 	defer batch.lock.Unlock()
 	batch.data = append(batch.data, req)
@@ -214,7 +244,7 @@ func (metricIngest *LMMetricIngest) processBatch(ctx context.Context) {
 			if req == nil {
 				continue
 			}
-			_, err := metricIngest.export(req, metricIngest.uri(), http.MethodPost)
+			_, err := metricIngest.export(req)
 			if err != nil {
 				log.Println(err)
 			}
@@ -223,7 +253,7 @@ func (metricIngest *LMMetricIngest) processBatch(ctx context.Context) {
 }
 
 // combineBatchedMetricsRequests merges the requests present in batching cache and creates metric payload at the end of every batching interval
-func (batch *metricBatch) combineBatchedMetricsRequests() *LMMetricIngestRequest {
+func (batch *metricBatch) combineBatchedMetricsRequests() *lmMetricIngestRequest {
 	// merge the requests from map
 	resourceMap := make(map[string]model.ResourceInput)
 	dsMap := make(map[string][]model.DatasourceInput)
@@ -240,13 +270,9 @@ func (batch *metricBatch) combineBatchedMetricsRequests() *LMMetricIngestRequest
 	for _, metricItem := range batch.data {
 
 		var metricPayload model.MetricPayload
-		var isResCreatePayload bool
 
-		if len(metricItem.Payload) > 0 {
-			metricPayload = metricItem.Payload[0]
-		} else {
-			metricPayload = metricItem.PayloadWithResourceCreation[0]
-			isResCreatePayload = true
+		if len(metricItem.payload) > 0 {
+			metricPayload = metricItem.payload[0]
 		}
 
 		if _, ok := resourceMap[metricPayload.ResourceName]; !ok {
@@ -255,7 +281,7 @@ func (batch *metricBatch) combineBatchedMetricsRequests() *LMMetricIngestRequest
 				ResourceDescription: metricPayload.ResourceDescription,
 				ResourceID:          metricPayload.ResourceID,
 				ResourceProperties:  metricPayload.ResourceProperties,
-				IsCreate:            isResCreatePayload,
+				IsCreate:            metricPayload.IsCreate,
 			}
 		}
 
@@ -329,15 +355,10 @@ func (batch *metricBatch) combineBatchedMetricsRequests() *LMMetricIngestRequest
 	return body
 }
 
-// uri returns the endpoint/uri of metric ingest API
-func (metricIngest LMMetricIngest) uri() string {
-	return uri
-}
-
 // mergeMetricPayload prepares metrics payload
-func (batch *metricBatch) mergeMetricPayload(resources map[string]model.ResourceInput, datasources map[string][]model.DatasourceInput, instances map[string][]model.InstanceInput, datapoints map[string][]model.DataPointInput) *LMMetricIngestRequest {
+func (batch *metricBatch) mergeMetricPayload(resources map[string]model.ResourceInput, datasources map[string][]model.DatasourceInput, instances map[string][]model.InstanceInput, datapoints map[string][]model.DataPointInput) *lmMetricIngestRequest {
 
-	metricsReq := &LMMetricIngestRequest{}
+	metricsReq := &lmMetricIngestRequest{}
 
 	for resName, resDetails := range resources {
 
@@ -347,6 +368,7 @@ func (batch *metricBatch) mergeMetricPayload(resources map[string]model.Resource
 		payload.ResourceID = resDetails.ResourceID
 		payload.ResourceDescription = resDetails.ResourceDescription
 		payload.ResourceProperties = resDetails.ResourceProperties
+		payload.IsCreate = resDetails.IsCreate
 
 		if dsArray, dsExists := datasources[resName]; dsExists {
 
@@ -373,14 +395,17 @@ func (batch *metricBatch) mergeMetricPayload(resources map[string]model.Resource
 							dataPoints = append(dataPoints, dataPoint)
 						}
 					}
-					instances = append(instances, model.Instance{InstanceName: instance.InstanceName, InstanceID: instance.InstanceID, InstanceDisplayName: instance.InstanceDisplayName, InstanceGroup: instance.InstanceGroup, InstanceProperties: instance.InstanceProperties, DataPoints: dataPoints})
+					instances = append(instances, model.Instance{
+						InstanceName:        instance.InstanceName,
+						InstanceID:          instance.InstanceID,
+						InstanceDisplayName: instance.InstanceDisplayName,
+						InstanceGroup:       instance.InstanceGroup,
+						InstanceProperties:  instance.InstanceProperties,
+						DataPoints:          dataPoints,
+					})
 					payload.Instances = instances
 
-					if resDetails.IsCreate {
-						metricsReq.PayloadWithResourceCreation = append(metricsReq.PayloadWithResourceCreation, payload)
-					} else {
-						metricsReq.Payload = append(metricsReq.Payload, payload)
-					}
+					metricsReq.payload = append(metricsReq.payload, payload)
 				}
 			}
 		}
@@ -394,143 +419,189 @@ func (batch *metricBatch) mergeMetricPayload(resources map[string]model.Resource
 }
 
 // export exports metrics to the LM platform
-func (metricIngest *LMMetricIngest) export(req *LMMetricIngestRequest, uri, method string) (*model.IngestResponse, error) {
-	ctx := context.Background()
+func (metricIngest *LMMetricIngest) export(req *lmMetricIngestRequest) (*SendMetricResponse, error) {
+	if len(req.payload) == 0 {
+		return nil, nil
+	}
+	var ctx context.Context
+
+	var payloadWithResourceCreation []model.MetricPayload
+	var payloadWithoutResourceCreation []model.MetricPayload
+
+	for _, payload := range req.payload {
+		if payload.IsCreate {
+			payloadWithResourceCreation = append(payloadWithResourceCreation, payload)
+		} else {
+			payloadWithoutResourceCreation = append(payloadWithoutResourceCreation, payload)
+		}
+	}
+
+	sendMetricResponse := &SendMetricResponse{}
 	var errs []error
-	var respErrs []error
 
-	cfg := client.RequestConfig{
-		Client:      metricIngest.client,
-		Url:         metricIngest.url,
-		Uri:         uri,
-		Method:      method,
-		Gzip:        metricIngest.gzip,
-		RateLimiter: metricIngest.rateLimiter,
-	}
+	// export payload without resource creation
+	if len(payloadWithoutResourceCreation) > 0 {
 
-	apiCallResponse := &model.IngestResponse{StatusCode: http.StatusMultiStatus}
-
-	if method == http.MethodPatch || method == http.MethodPut {
-		payloadBody, err := json.Marshal(req.UpdatePropertiesPayload)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error in marshaling update property metric payload: %w ", err))
+		cfg := client.RequestConfig{
+			Client:      metricIngest.client,
+			Url:         metricIngest.url,
+			Uri:         uri,
+			Method:      http.MethodPost,
+			Gzip:        metricIngest.gzip,
+			RateLimiter: metricIngest.rateLimiter,
 		}
 
-		cfg.Token = metricIngest.auth.GetCredentials(method, uri, payloadBody)
-		cfg.Body = payloadBody
-
-		resp, err := client.DoRequest(ctx, cfg, handleMetricsExportResponse)
+		metricsExpResp, err := metricIngest.sendMetricPayload(ctx, payloadWithoutResourceCreation, cfg)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("error in updating properties: %w", err))
-		} else if resp != nil && (resp.StatusCode >= 400 && resp.StatusCode <= 599) {
+			if metricsExpResp != nil && (metricsExpResp.StatusCode >= 400 && metricsExpResp.StatusCode <= 599) {
 
-			if resp.StatusCode == http.StatusMultiStatus {
-				apiCallResponse.MultiStatus = append(apiCallResponse.MultiStatus, resp.MultiStatus...)
-			} else {
-				apiCallResponse.MultiStatus = append(apiCallResponse.MultiStatus, struct {
-					Code  float64 `json:"code"`
-					Error string  `json:"error"`
-				}{
-					Code:  float64(resp.StatusCode),
-					Error: resp.Error.Error(),
-				})
+				if metricsExpResp.StatusCode == http.StatusMultiStatus {
+					sendMetricResponse.MultiStatus = append(sendMetricResponse.MultiStatus, metricsExpResp.MultiStatus...)
+				}
 			}
-			respErrs = append(respErrs, errors.New(resp.Message))
+			errs = append(errs, err)
 		}
 	}
 
-	if len(req.Payload) > 0 {
-		payloadBody, err := json.Marshal(req.Payload)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error in marshaling metric payload: %w", err))
+	// export payload with resource creation
+	if len(payloadWithResourceCreation) > 0 {
+
+		cfg := client.RequestConfig{
+			Client:      metricIngest.client,
+			Url:         metricIngest.url,
+			Uri:         uri + createFlag,
+			Method:      http.MethodPost,
+			Gzip:        metricIngest.gzip,
+			RateLimiter: metricIngest.rateLimiter,
 		}
-		cfg.Token = metricIngest.auth.GetCredentials(method, uri, payloadBody)
-		cfg.Body = payloadBody
 
-		resp, err := client.DoRequest(ctx, cfg, handleMetricsExportResponse)
+		metricsExpResp, err := metricIngest.sendMetricPayload(ctx, payloadWithResourceCreation, cfg)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("error while exporting metrics: %w", err))
-		} else if resp != nil && (resp.StatusCode >= 400 && resp.StatusCode <= 599) {
+			if metricsExpResp != nil && (metricsExpResp.StatusCode >= 400 && metricsExpResp.StatusCode <= 599) {
 
-			if resp.StatusCode == http.StatusMultiStatus {
-				apiCallResponse.MultiStatus = append(apiCallResponse.MultiStatus, resp.MultiStatus...)
-			} else {
-				apiCallResponse.MultiStatus = append(apiCallResponse.MultiStatus, struct {
-					Code  float64 `json:"code"`
-					Error string  `json:"error"`
-				}{
-					Code:  float64(resp.StatusCode),
-					Error: resp.Error.Error(),
-				})
+				if metricsExpResp.StatusCode == http.StatusMultiStatus {
+					sendMetricResponse.MultiStatus = append(sendMetricResponse.MultiStatus, metricsExpResp.MultiStatus...)
+				}
 			}
-			respErrs = append(respErrs, errors.New(resp.Message))
+			errs = append(errs, err)
 		}
 	}
 
-	if len(req.PayloadWithResourceCreation) > 0 {
-		metricURI := uri + createFlag
-		payloadBody, err := json.Marshal(req.PayloadWithResourceCreation)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error in marshaling metric payload with create flag: %w", err))
+	if len(errs) > 0 {
+		if len(sendMetricResponse.MultiStatus) == 0 {
+			// TODO: Instead of StatusInternalServerError, needed more granular handling here
+			sendMetricResponse.StatusCode = http.StatusInternalServerError
 		}
-		cfg.Token = metricIngest.auth.GetCredentials(method, uri, payloadBody)
-		cfg.Body = payloadBody
-		cfg.Uri = metricURI
-
-		resp, err := client.DoRequest(ctx, cfg, handleMetricsExportResponse)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error while exporting metrics with create flag: %w", err))
-		} else if resp != nil && (resp.StatusCode >= 400 && resp.StatusCode <= 599) {
-
-			if resp.StatusCode == http.StatusMultiStatus {
-				apiCallResponse.MultiStatus = append(apiCallResponse.MultiStatus, resp.MultiStatus...)
-			} else {
-				apiCallResponse.MultiStatus = append(apiCallResponse.MultiStatus, struct {
-					Code  float64 `json:"code"`
-					Error string  `json:"error"`
-				}{
-					Code:  float64(resp.StatusCode),
-					Error: resp.Error.Error(),
-				})
-			}
-			respErrs = append(respErrs, errors.New(resp.Message))
-		}
+		sendMetricResponse.Error = multierr.Combine(errs...)
+	} else {
+		sendMetricResponse.Success = true
+		sendMetricResponse.StatusCode = http.StatusAccepted
 	}
 
-	apiCallResponse.Error = multierr.Combine(respErrs...)
-	return apiCallResponse, multierr.Combine(errs...)
+	if !sendMetricResponse.Success {
+		return sendMetricResponse, fmt.Errorf("LMMetricIngest.export: failed to export metrics: %w", sendMetricResponse.Error)
+	}
+	return sendMetricResponse, nil
 }
 
-func (metricIngest *LMMetricIngest) UpdateResourceProperties(resName string, resIDs, resProps map[string]string, patch bool) (*model.IngestResponse, error) {
-	if resName == "" || resIDs == nil || resProps == nil {
-		return nil, fmt.Errorf("one of the fields: resource name, resource ids or resource properties, is missing")
+func (metricIngest *LMMetricIngest) sendMetricPayload(ctx context.Context, payload []model.MetricPayload, cfg client.RequestConfig) (*model.MetricsIngestAPIResponse, error) {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
 	}
+	token, err := metricIngest.auth.GetCredentials(http.MethodPost, uri, body)
+	if err != nil {
+		return nil, fmt.Errorf("LMMetricIngest.export: failed to get auth credentials: %w", err)
+	}
+
+	cfg.Token = token
+	cfg.Body = body
+
+	resp, err := client.DoRequest(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("LMMetricIngest.export: metrics export request failed: %w", err)
+	}
+
+	metricsExpResp, err := readResponse(resp)
+	if err != nil {
+		return metricsExpResp, fmt.Errorf("LMMetricIngest.export: failed to read response: %w", err)
+	}
+
+	if !metricsExpResp.Success {
+		return metricsExpResp, fmt.Errorf("LMMetricIngest.export: failed to export metrics: %w", metricsExpResp.Error)
+	}
+	return metricsExpResp, nil
+}
+
+func (metricIngest *LMMetricIngest) UpdateResourceProperties(resName string, resIDs, resProps map[string]string, patch bool) (*UpdateResourcePropertiesResponse, error) {
+	if resName == "" || resIDs == nil || resProps == nil {
+		return nil, errors.New("one of the fields: resource name, resource ids or resource properties, is missing")
+	}
+
 	errorMsg := ""
 	errorMsg += validator.CheckResourceNameValidation(false, resName)
 	errorMsg += validator.CheckResourceIDValidation(resIDs)
 	errorMsg += validator.CheckResourcePropertiesValidation(resProps)
 
 	if errorMsg != "" {
-		return nil, fmt.Errorf("validation failed: %s", errorMsg)
+		return nil, fmt.Errorf("LMMetricIngest.UpdateResourceProperties: validation failed: %v", errorMsg)
 	}
-	updateResProp := model.UpdateProperties{
+	updateResPropPayload := model.UpdatePropertiesPayload{
 		ResourceName:       resName,
 		ResourceID:         resIDs,
 		ResourceProperties: resProps,
 	}
+
 	method := http.MethodPut
 	if patch {
 		method = http.MethodPatch
 	}
 
-	req := &LMMetricIngestRequest{UpdatePropertiesPayload: updateResProp}
+	body, _ := json.Marshal(updateResPropPayload)
 
-	return metricIngest.export(req, updateResPropURI, method)
+	token, err := metricIngest.auth.GetCredentials(method, updateResPropURI, body)
+	if err != nil {
+		return nil, fmt.Errorf("LMMetricIngest.UpdateResourceProperties: failed to get auth credentials: %w", err)
+	}
+
+	cfg := client.RequestConfig{
+		Client:      metricIngest.client,
+		Url:         metricIngest.url,
+		Uri:         updateResPropURI,
+		Body:        body,
+		Method:      method,
+		Gzip:        metricIngest.gzip,
+		RateLimiter: metricIngest.rateLimiter,
+		Token:       token,
+	}
+
+	resp, err := client.DoRequest(context.Background(), cfg)
+	if err != nil {
+		return nil, err
+	}
+	parsedResp, err := readResponse(resp)
+	if err != nil {
+		return nil, err
+	}
+
+	updateResPropResp := &UpdateResourcePropertiesResponse{
+		StatusCode: parsedResp.StatusCode,
+		Success:    parsedResp.Success,
+		Message:    parsedResp.Message,
+
+		Error:       parsedResp.Error,
+		MultiStatus: parsedResp.MultiStatus,
+	}
+
+	if !parsedResp.Success {
+		return updateResPropResp, fmt.Errorf("LMMetricIngest.UpdateResourceProperties: failed to update resource properties: %w", updateResPropResp.Error)
+	}
+	return updateResPropResp, nil
 }
 
-func (metricIngest *LMMetricIngest) UpdateInstanceProperties(resIDs, insProps map[string]string, dsName, dsDisplayName, insName string, patch bool) (*model.IngestResponse, error) {
+func (metricIngest *LMMetricIngest) UpdateInstanceProperties(resIDs, insProps map[string]string, dsName, dsDisplayName, insName string, patch bool) (*UpdateInstancePropertiesResponse, error) {
 	if resIDs == nil || insProps == nil || dsName == "" || insName == "" {
-		return nil, fmt.Errorf("one of the fields: instance name, datasource name, resource ids, or instance properties, is missing")
+		return nil, errors.New("one of the fields: instance name, datasource name, resource ids, or instance properties, is missing")
 	}
 	errorMsg := ""
 	errorMsg += validator.CheckResourceIDValidation(resIDs)
@@ -540,14 +611,14 @@ func (metricIngest *LMMetricIngest) UpdateInstanceProperties(resIDs, insProps ma
 	errorMsg += validator.CheckDSDisplayNameValidation(dsDisplayName)
 
 	if errorMsg != "" {
-		return nil, fmt.Errorf("validation failed: %s", errorMsg)
+		return nil, fmt.Errorf("LMMetricIngest.UpdateInstanceProperties: validation failed: %s", errorMsg)
 	}
 
 	method := http.MethodPut
 	if patch {
 		method = http.MethodPatch
 	}
-	updateInsProp := model.UpdateProperties{
+	updateInsPropPayload := model.UpdatePropertiesPayload{
 		ResourceID:            resIDs,
 		DataSourceName:        dsName,
 		DataSourceDisplayName: dsDisplayName,
@@ -555,12 +626,53 @@ func (metricIngest *LMMetricIngest) UpdateInstanceProperties(resIDs, insProps ma
 		InstanceProperties:    insProps,
 	}
 
-	req := &LMMetricIngestRequest{UpdatePropertiesPayload: updateInsProp}
-	return metricIngest.export(req, updateInsPropURI, method)
+	body, err := json.Marshal(updateInsPropPayload)
+	if err != nil {
+		return nil, err
+	}
+
+	token, err := metricIngest.auth.GetCredentials(method, updateInsPropURI, body)
+	if err != nil {
+		return nil, fmt.Errorf("LMMetricIngest.UpdateInstanceProperties: failed to get auth credentials: %w", err)
+	}
+
+	cfg := client.RequestConfig{
+		Client:      metricIngest.client,
+		Url:         metricIngest.url,
+		Uri:         updateInsPropURI,
+		Body:        body,
+		Method:      method,
+		Gzip:        metricIngest.gzip,
+		RateLimiter: metricIngest.rateLimiter,
+		Token:       token,
+	}
+
+	resp, err := client.DoRequest(context.Background(), cfg)
+	if err != nil {
+		return nil, err
+	}
+	parsedResp, err := readResponse(resp)
+	if err != nil {
+		return nil, err
+	}
+
+	updateInstancePropResp := &UpdateInstancePropertiesResponse{
+		StatusCode: parsedResp.StatusCode,
+		Success:    parsedResp.Success,
+		Message:    parsedResp.Message,
+
+		Error:       parsedResp.Error,
+		MultiStatus: parsedResp.MultiStatus,
+	}
+
+	if !updateInstancePropResp.Success {
+		return updateInstancePropResp, fmt.Errorf("LMMetricIngest.UpdateInstanceProperties: failed to update instance properties: %w", updateInstancePropResp.Error)
+	}
+	return updateInstancePropResp, nil
 }
 
-// handleLogsExportResponse handles the http response returned by LM platform
-func handleMetricsExportResponse(ctx context.Context, resp *http.Response) (*model.IngestResponse, error) {
+// readResponse handles the http response returned by LM platform
+func readResponse(resp *http.Response) (*model.MetricsIngestAPIResponse, error) {
 	defer func() {
 		// Discard any remaining response body when we are done reading.
 		io.CopyN(io.Discard, resp.Body, maxHTTPResponseReadBytes) // nolint:errcheck
@@ -568,20 +680,21 @@ func handleMetricsExportResponse(ctx context.Context, resp *http.Response) (*mod
 	}()
 
 	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusAccepted {
-		return &model.IngestResponse{
+		return &model.MetricsIngestAPIResponse{
 			StatusCode: resp.StatusCode,
 			Success:    true,
 		}, nil
 	}
 
-	parsedResponse := readResponse(resp)
+	parsedResponse := decodeResponse(resp)
 
-	apiCallResponse := &model.IngestResponse{StatusCode: resp.StatusCode, Success: false}
+	apiCallResponse := &model.MetricsIngestAPIResponse{StatusCode: resp.StatusCode, Success: false}
 
 	// Format the error message. Use the status if it is present in the response.
 	var formattedErr error
+	var respErr error
+
 	if parsedResponse != nil {
-		var err error
 
 		if resp.StatusCode == http.StatusMultiStatus {
 			errs := []error{}
@@ -599,36 +712,27 @@ func handleMetricsExportResponse(ctx context.Context, resp *http.Response) (*mod
 					errs = append(errs, fmt.Errorf("error code: [%d], error message: %s", int(responseError["code"].(float64)), responseError["error"].(string)))
 				}
 			}
-			err = multierr.Combine(errs...)
+			respErr = multierr.Combine(errs...)
 		} else {
-			err = errors.New(parsedResponse.Message)
+			respErr = errors.New(parsedResponse.Message)
 		}
 
 		formattedErr = fmt.Errorf(
-			"error exporting items, request to %s responded with HTTP Status Code %d, Message: %s, Details: %s",
-			resp.Request.URL, resp.StatusCode, parsedResponse.Message, err.Error())
+			"readResponse: error exporting items, request to %s responded with HTTP Status Code %d, Message: %s, Details: %s",
+			resp.Request.URL, resp.StatusCode, parsedResponse.Message, respErr.Error())
 	} else {
 		formattedErr = fmt.Errorf(
-			"error exporting items, request to %s responded with HTTP Status Code %d",
+			"readResponse: error exporting items, request to %s responded with HTTP Status Code %d",
 			resp.Request.URL, resp.StatusCode)
 	}
 	apiCallResponse.Error = formattedErr
-
-	retryAfter := 0
-	if val := resp.Header.Get(headerRetryAfter); val != "" {
-		if seconds, err2 := strconv.Atoi(val); err2 == nil {
-			retryAfter = seconds
-		}
-	}
-	apiCallResponse.RetryAfter = retryAfter
-
 	return apiCallResponse, nil
 }
 
-// Read the response and decode the status.Status from the body.
+// Read the response.
 // Returns nil if the response is empty or cannot be decoded.
-func readResponse(resp *http.Response) *LMMetricIngestResponse {
-	var lmMetricIngestResponse *LMMetricIngestResponse
+func decodeResponse(resp *http.Response) *LMMetricIngestResponse {
+	var metricIngestResponse *LMMetricIngestResponse
 	if resp.StatusCode == 207 || resp.StatusCode >= 400 && resp.StatusCode <= 599 {
 		// Request failed. Read the body.
 		maxRead := resp.ContentLength
@@ -638,12 +742,12 @@ func readResponse(resp *http.Response) *LMMetricIngestResponse {
 		respBytes := make([]byte, maxRead)
 		n, err := io.ReadFull(resp.Body, respBytes)
 		if err == nil && n > 0 {
-			lmMetricIngestResponse = &LMMetricIngestResponse{}
-			err = json.Unmarshal(respBytes, lmMetricIngestResponse)
+			metricIngestResponse = &LMMetricIngestResponse{}
+			err = json.Unmarshal(respBytes, metricIngestResponse)
 			if err != nil {
-				lmMetricIngestResponse = nil
+				metricIngestResponse = nil
 			}
 		}
 	}
-	return lmMetricIngestResponse
+	return metricIngestResponse
 }

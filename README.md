@@ -9,6 +9,14 @@ Similarly, If a log integration isn’t available or you have custom logs that y
 
 ## Getting Started
 
+### Installation
+
+To use the LogicMonitor Go Data SDK in your Go module, you can simply run the following command:
+
+```bash
+go get -u github.com/logicmonitor/lm-data-sdk-go
+```
+
 ### Authentication
 While using LMv1 authentication set LOGICMONITOR_ACCESS_ID and LOGICMONITOR_ACCESS_KEY properties.
 In case of BearerToken authentication set LOGICMONITOR_BEARER_TOKEN property. 
@@ -22,26 +30,82 @@ All properties can be set using environment variable.
 |   LOGICMONITOR_ACCESS_KEY      |	Access key while using LMv1 authentication.|
 |   LOGICMONITOR_BEARER_TOKEN    |	BearerToken while using Bearer authentication.|
 
+## Usage
+
 ### Metrics Ingestion
-Here is an [example](https://github.com/logicmonitor/lm-data-sdk-go/blob/main/example/metrics/metricsingestion.go) for metrics ingestion.
+
+This is how you can initialise metrics client:
+
+```go
+import (
+	"context"
+	"fmt"
+	"os"
+
+	"github.com/logicmonitor/lm-data-sdk-go/api/metrics"
+)
+
+func main() {
+	options := []metrics.Option{
+		metrics.WithMetricBatchingInterval(3 * time.Second),
+        ...
+	}
+
+	lmMetric, err := metrics.NewLMMetricIngest(context.Background(), options...)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error when initializing metric client: %v\n", err)
+		return
+	}
+    ...
+}
+```
+
+Here is the complete [example](https://github.com/logicmonitor/lm-data-sdk-go/blob/main/example/metrics/metricsingestion.go) for metrics ingestion.
 
 
 #### Options
 
 Following options can be used to create the metrics api client.
 
-|   Option  |	Description | Default |
-| -------------------- |:----------------------------------:|:--------------:| 
-| `WithMetricBatchingInterval(batchinterval time.Duration)`  | Sets time interval to wait before performing next batching of metrics. | `10s` |
-| `WithMetricBatchingDisabled()` | Disables batching of metrics. | `Enabled` |
-| `WithGzipCompression(gzip bool)` | Enables / disables gzip compression of metric payload. | `Enabled` |
-| `WithRateLimit(requestCount int)` | Sets limit on the number of requests to metrics API per minute. | `100` |
-| `WithHTTPClient(client *http.Client)` | Sets custom HTTP Client | `Default http client with timeout of 5s`|
-| `WithEndpoint(endpoint string)` | Sets endpoint to send the metrics to. | `https://${LOGICMONITOR_ACCOUNT}.logicmonitor.com/rest/`|
-| `WithAuthentication(authParams utils.AuthParams)`         | Sets authentication parameters | `-` |
+|   Option  |	Description |
+| -------------------- |:----------------------------------:|
+| `WithMetricBatchingInterval(batchinterval time.Duration)`  | Sets time interval to wait before performing next batching of metrics. Default value is `10s`. |
+| `WithMetricBatchingDisabled()` | Disables batching of metrics. Default value is `Enabled`. |
+| `WithGzipCompression(gzip bool)` | Enables / disables gzip compression of metric payload. Default value is `Enabled`. |
+| `WithRateLimit(requestCount int)` | Sets limit on the number of requests to metrics API per minute. Default value is `100`. |
+| `WithHTTPClient(client *http.Client)` | Sets custom HTTP Client. Default http client is configured with timeout of `5s`.|
+| `WithEndpoint(endpoint string)` | Sets endpoint to send the metrics to. Default value is `https://${LOGICMONITOR_ACCOUNT}.logicmonitor.com/rest/`.|
+| `WithAuthentication(authParams utils.AuthParams)`  | Sets authentication parameters. |
 
 ### Logs Ingestion
-Here is an [example](https://github.com/logicmonitor/lm-data-sdk-go/blob/main/example/logs/logsingestion.go) for logs ingestion.
+
+This is how you can initialise logs client:
+
+```go
+  import (
+	"context"
+	"fmt"
+	"os"
+
+	"github.com/logicmonitor/lm-data-sdk-go/api/logs"
+)
+
+func main() {
+	options := []logs.Option{
+		logs.WithLogBatchingDisabled(),
+        ...
+	}
+
+	lmLog, err := logs.NewLMLogIngest(context.Background(), options...)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error when initializing log client: %v", err)
+		return
+	}
+    ...
+}
+```
+
+Here is the complete [example](https://github.com/logicmonitor/lm-data-sdk-go/blob/main/example/logs/logsingestion.go) for logs ingestion.
 
 
 #### Options
@@ -49,19 +113,20 @@ Here is an [example](https://github.com/logicmonitor/lm-data-sdk-go/blob/main/ex
 Following options can be used to create the logs api client.
 
 
-|   Option  |	Description | Default |
-| -------------------- |:---------------------------------------------:|:--------------:|  
-| `WithLogBatchingInterval(batchinterval time.Duration)`  | Sets time interval to wait before performing next batching of logs. | `10s` |
-| `WithLogBatchingDisabled()` | Disables batching of logs. | `Enabled` |
-| `WithGzipCompression(gzip bool)` | Enables / disables gzip compression of metric payload. | `Enabled` |
-| `WithRateLimit(requestCount int)` | Sets limit on the number of requests to metrics API per minute. | `100` |
-| `WithHTTPClient(client *http.Client)` | Sets custom HTTP Client | `Default http client will have timeout of 5s`|
-| `WithEndpoint(endpoint string)` | Sets endpoint to send the metrics to. | `https://${LOGICMONITOR_ACCOUNT}.logicmonitor.com/rest/`|
-| `WithResourceMappingOperation(op string)` | Sets resource mapping operation. Valid operations are `AND` & `OR` | `-` |
-| `WithAuthentication(authParams utils.AuthParams)`         | Sets authentication parameters | `-` |
+|   Option  |	Description |
+| -------------------- |:---------------------------------------------:| 
+| `WithLogBatchingInterval(batchinterval time.Duration)`  | Sets time interval to wait before performing next batching of logs. Default value is `10s`. |
+| `WithLogBatchingDisabled()` | Disables batching of logs. Default value is `Enabled`. |
+| `WithGzipCompression(gzip bool)` | Enables / disables gzip compression of metric payload. Default value is `Enabled`. |
+| `WithRateLimit(requestCount int)` | Sets limit on the number of requests to metrics API per minute. Default value is `100`. |
+| `WithHTTPClient(client *http.Client)` | Sets custom HTTP Client. Default http client is configured with timeout of `5s`.|
+| `WithEndpoint(endpoint string)` | Sets endpoint to send the metrics to. Default value is `https://${LOGICMONITOR_ACCOUNT}.logicmonitor.com/rest/`|
+| `WithResourceMappingOperation(op string)` | Sets resource mapping operation. Valid operations are `AND` & `OR`. |
+| `WithUserAgent(userAgent string)`         | Sets user agent. |
+| `WithAuthentication(authParams utils.AuthParams)`         | Sets authentication parameters. |
 
 
-
+## License
 
 Copyright, 2023, LogicMonitor, Inc.
 
