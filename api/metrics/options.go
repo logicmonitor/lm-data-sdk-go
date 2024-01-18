@@ -66,6 +66,14 @@ func WithEndpoint(endpoint string) Option {
 	}
 }
 
+// WithUserAgent sets the provided user agent
+func WithUserAgent(userAgent string) Option {
+	return func(metricIngest *LMMetricIngest) error {
+		metricIngest.userAgent = userAgent
+		return nil
+	}
+}
+
 type SendMetricsOptionalParameters struct {
 }
 

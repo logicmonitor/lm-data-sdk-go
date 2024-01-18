@@ -68,6 +68,22 @@ func WithEndpoint(endpoint string) Option {
 	}
 }
 
+// WithCollectorID sets collectorID which will be passed in request header
+func WithCollectorID(collectorID string) Option {
+	return func(traceIngest *LMTraceIngest) error {
+		traceIngest.collectorID = collectorID
+		return nil
+	}
+}
+
+// WithUserAgent sets the provided user agent
+func WithUserAgent(userAgent string) Option {
+	return func(traceIngest *LMTraceIngest) error {
+		traceIngest.userAgent = userAgent
+		return nil
+	}
+}
+
 type SendTracesOptionalParameters struct {
 }
 

@@ -26,7 +26,7 @@ type RequestConfig struct {
 	UserAgent       string
 }
 
-func Client() *http.Client {
+func New() *http.Client {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: false, MinVersion: tls.VersionTLS12}
 	clientTransport := (http.RoundTripper)(transport)
@@ -65,7 +65,6 @@ func DoRequest(ctx context.Context, reqConfig RequestConfig) (*http.Response, er
 	for key, value := range reqConfig.Headers {
 		req.Header.Set(key, value)
 	}
-
 	if acquire, err := reqConfig.RateLimiter.Acquire(reqConfig.PayloadMetadata); !acquire {
 		return nil, err
 	}

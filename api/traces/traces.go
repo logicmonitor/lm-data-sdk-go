@@ -34,6 +34,8 @@ type LMTraceIngest struct {
 	rateLimiterSetting rateLimiter.TraceRateLimiterSetting
 	rateLimiter        rateLimiter.RateLimiter
 	batch              *traceBatch
+	collectorID        string
+	userAgent          string
 }
 
 type lmTraceIngestRequest struct {
@@ -69,7 +71,7 @@ type traceBatch struct {
 // NewLMTraceIngest initializes LMTraceIngest
 func NewLMTraceIngest(ctx context.Context, opts ...Option) (*LMTraceIngest, error) {
 	traceIngest := LMTraceIngest{
-		client:             client.Client(),
+		client:             client.New(),
 		auth:               utils.AuthParams{},
 		gzip:               true,
 		rateLimiterSetting: rateLimiter.TraceRateLimiterSetting{},
@@ -192,6 +194,10 @@ func (traceIngest *LMTraceIngest) export(req *lmTraceIngestRequest) (*SendTraceR
 	headers := make(map[string]string)
 	headers["Content-Type"] = "application/x-protobuf"
 
+	if traceIngest.collectorID != "" {
+		headers["Collector-ID"] = traceIngest.collectorID
+	}
+
 	traceData := req.tracesPayload.TraceData
 	tr := ptraceotlp.NewExportRequestFromTraces(traceData)
 	body, err := tr.MarshalProto()
@@ -214,6 +220,7 @@ func (traceIngest *LMTraceIngest) export(req *lmTraceIngestRequest) (*SendTraceR
 		Token:           token,
 		Gzip:            traceIngest.gzip,
 		Headers:         headers,
+		UserAgent:       traceIngest.userAgent,
 		PayloadMetadata: rateLimiter.TracePayloadMetadata{RequestSpanCount: uint64(req.tracesPayload.TraceData.SpanCount())},
 	}
 
