@@ -117,10 +117,10 @@ Following options can be used to create the logs api client.
 | -------------------- |:---------------------------------------------:| 
 | `WithLogBatchingInterval(batchinterval time.Duration)`  | Sets time interval to wait before performing next batching of logs. Default value is `10s`. |
 | `WithLogBatchingDisabled()` | Disables batching of logs. Default value is `Enabled`. |
-| `WithGzipCompression(gzip bool)` | Enables / disables gzip compression of metric payload. Default value is `Enabled`. |
-| `WithRateLimit(requestCount int)` | Sets limit on the number of requests to metrics API per minute. Default value is `100`. |
+| `WithGzipCompression(gzip bool)` | Enables / disables gzip compression of logs payload. Default value is `Enabled`. |
+| `WithRateLimit(requestCount int)` | Sets limit on the number of requests to logs API per minute. Default value is `100`. |
 | `WithHTTPClient(client *http.Client)` | Sets custom HTTP Client. Default http client is configured with timeout of `5s`.|
-| `WithEndpoint(endpoint string)` | Sets endpoint to send the metrics to. Default value is `https://${LOGICMONITOR_ACCOUNT}.logicmonitor.com/rest/`|
+| `WithEndpoint(endpoint string)` | Sets endpoint to send the logs to. Default value is `https://${LOGICMONITOR_ACCOUNT}.logicmonitor.com/rest/`|
 | `WithResourceMappingOperation(op string)` | Sets resource mapping operation. Valid operations are `AND` & `OR`. |
 | `WithUserAgent(userAgent string)`         | Sets user agent. |
 | `WithAuthentication(authParams utils.AuthParams)`         | Sets authentication parameters. |
