@@ -91,7 +91,7 @@ func NewLogBatch() *logsBatch {
 func NewLMLogIngest(ctx context.Context, opts ...Option) (*LMLogIngest, error) {
 	logIngest := LMLogIngest{
 		gzip:               true,
-		client:             client.Client(),
+		client:             client.New(),
 		auth:               utils.AuthParams{},
 		rateLimiterSetting: rateLimiter.LogRateLimiterSetting{},
 		batch:              NewLogBatch(),

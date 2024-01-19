@@ -7,7 +7,7 @@ import (
 
 const (
 	PackageID      = "lm-data-sdk-go"
-	PackageVersion = "1.2.0"
+	PackageVersion = "1.3.0"
 )
 
 func BuildUserAgent() string {

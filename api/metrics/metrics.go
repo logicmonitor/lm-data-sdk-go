@@ -40,6 +40,7 @@ type LMMetricIngest struct {
 	rateLimiterSetting rateLimiter.MetricsRateLimiterSetting
 	rateLimiter        rateLimiter.RateLimiter
 	batch              *metricBatch
+	userAgent          string
 }
 
 type lmMetricIngestRequest struct {
@@ -104,7 +105,7 @@ func NewMetricBatch() *metricBatch {
 // NewLMMetricIngest initializes LMMetricIngest
 func NewLMMetricIngest(ctx context.Context, opts ...Option) (*LMMetricIngest, error) {
 	metricIngest := LMMetricIngest{
-		client:             client.Client(),
+		client:             client.New(),
 		auth:               utils.AuthParams{},
 		gzip:               true,
 		rateLimiterSetting: rateLimiter.MetricsRateLimiterSetting{},
@@ -438,6 +439,7 @@ func (metricIngest *LMMetricIngest) export(req *lmMetricIngestRequest) (*SendMet
 
 	sendMetricResponse := &SendMetricResponse{}
 	var errs []error
+	var statusCode int
 
 	// export payload without resource creation
 	if len(payloadWithoutResourceCreation) > 0 {
@@ -449,6 +451,7 @@ func (metricIngest *LMMetricIngest) export(req *lmMetricIngestRequest) (*SendMet
 			Method:      http.MethodPost,
 			Gzip:        metricIngest.gzip,
 			RateLimiter: metricIngest.rateLimiter,
+			UserAgent:   metricIngest.userAgent,
 		}
 
 		metricsExpResp, err := metricIngest.sendMetricPayload(ctx, payloadWithoutResourceCreation, cfg)
@@ -457,6 +460,8 @@ func (metricIngest *LMMetricIngest) export(req *lmMetricIngestRequest) (*SendMet
 
 				if metricsExpResp.StatusCode == http.StatusMultiStatus {
 					sendMetricResponse.MultiStatus = append(sendMetricResponse.MultiStatus, metricsExpResp.MultiStatus...)
+				} else {
+					statusCode = metricsExpResp.StatusCode
 				}
 			}
 			errs = append(errs, err)
@@ -473,6 +478,7 @@ func (metricIngest *LMMetricIngest) export(req *lmMetricIngestRequest) (*SendMet
 			Method:      http.MethodPost,
 			Gzip:        metricIngest.gzip,
 			RateLimiter: metricIngest.rateLimiter,
+			UserAgent:   metricIngest.userAgent,
 		}
 
 		metricsExpResp, err := metricIngest.sendMetricPayload(ctx, payloadWithResourceCreation, cfg)
@@ -481,6 +487,8 @@ func (metricIngest *LMMetricIngest) export(req *lmMetricIngestRequest) (*SendMet
 
 				if metricsExpResp.StatusCode == http.StatusMultiStatus {
 					sendMetricResponse.MultiStatus = append(sendMetricResponse.MultiStatus, metricsExpResp.MultiStatus...)
+				} else {
+					statusCode = metricsExpResp.StatusCode
 				}
 			}
 			errs = append(errs, err)
@@ -489,8 +497,7 @@ func (metricIngest *LMMetricIngest) export(req *lmMetricIngestRequest) (*SendMet
 
 	if len(errs) > 0 {
 		if len(sendMetricResponse.MultiStatus) == 0 {
-			// TODO: Instead of StatusInternalServerError, needed more granular handling here
-			sendMetricResponse.StatusCode = http.StatusInternalServerError
+			sendMetricResponse.StatusCode = statusCode
 		}
 		sendMetricResponse.Error = multierr.Combine(errs...)
 	} else {
@@ -573,6 +580,7 @@ func (metricIngest *LMMetricIngest) UpdateResourceProperties(resName string, res
 		Gzip:        metricIngest.gzip,
 		RateLimiter: metricIngest.rateLimiter,
 		Token:       token,
+		UserAgent:   metricIngest.userAgent,
 	}
 
 	resp, err := client.DoRequest(context.Background(), cfg)
@@ -645,6 +653,7 @@ func (metricIngest *LMMetricIngest) UpdateInstanceProperties(resIDs, insProps ma
 		Gzip:        metricIngest.gzip,
 		RateLimiter: metricIngest.rateLimiter,
 		Token:       token,
+		UserAgent:   metricIngest.userAgent,
 	}
 
 	resp, err := client.DoRequest(context.Background(), cfg)

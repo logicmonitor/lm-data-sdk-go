@@ -25,10 +25,12 @@ type Lmv1Token struct {
 }
 
 type AuthParams struct {
-	AccessID             string
-	AccessKey            string
-	BearerToken          string
-	CollectorCredentials string
+	AccessID  string
+	AccessKey string
+
+	BearerToken string
+
+	CollectorCredentialsProvider func() string
 }
 
 func (ap AuthParams) GetCredentials(method, resourcePath string, body []byte) (string, error) {
@@ -48,8 +50,8 @@ func (ap AuthParams) GetCredentials(method, resourcePath string, body []byte) (s
 		return generateLMv1Token(method, accessID, accessKey, body, resourcePath).String(), nil
 	} else if bearerToken != "" {
 		return bearerToken, nil
-	} else if ap.CollectorCredentials != "" {
-		return ap.CollectorCredentials, nil
+	} else if credentials := ap.CollectorCredentialsProvider(); credentials != "" {
+		return credentials, nil
 	}
 	return "", errors.New("GetCredentials: auth token not found")
 }
