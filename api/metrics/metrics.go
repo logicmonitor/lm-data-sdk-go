@@ -726,9 +726,16 @@ func readResponse(resp *http.Response) (*model.MetricsIngestAPIResponse, error) 
 			respErr = errors.New(parsedResponse.Message)
 		}
 
-		formattedErr = fmt.Errorf(
-			"readResponse: error exporting items, request to %s responded with HTTP Status Code %d, Message: %s, Details: %s",
-			resp.Request.URL, resp.StatusCode, parsedResponse.Message, respErr.Error())
+		if respErr != nil {
+			formattedErr = fmt.Errorf(
+				"readResponse: error exporting items, request to %s responded with HTTP Status Code %d, Message: %s, Details: %s",
+				resp.Request.URL, resp.StatusCode, parsedResponse.Message, respErr.Error())
+		} else {
+			formattedErr = fmt.Errorf(
+				"readResponse: error exporting items, request to %s responded with HTTP Status Code %d, Message: %s",
+				resp.Request.URL, resp.StatusCode, parsedResponse.Message)
+		}
+
 	} else {
 		formattedErr = fmt.Errorf(
 			"readResponse: error exporting items, request to %s responded with HTTP Status Code %d",
