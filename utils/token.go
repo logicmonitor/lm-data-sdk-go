@@ -46,12 +46,15 @@ func (ap AuthParams) GetCredentials(method, resourcePath string, body []byte) (s
 	if bearerToken == "" {
 		bearerToken = os.Getenv("LOGICMONITOR_BEARER_TOKEN")
 	}
-	if accessID != "" && accessKey != "" {
+
+	if ap.CollectorCredentialsProvider != nil {
+		if credentials := ap.CollectorCredentialsProvider(); credentials != "" {
+			return credentials, nil
+		}
+	} else if accessID != "" && accessKey != "" {
 		return generateLMv1Token(method, accessID, accessKey, body, resourcePath).String(), nil
 	} else if bearerToken != "" {
 		return bearerToken, nil
-	} else if credentials := ap.CollectorCredentialsProvider(); credentials != "" {
-		return credentials, nil
 	}
 	return "", errors.New("GetCredentials: auth token not found")
 }
