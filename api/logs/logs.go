@@ -26,6 +26,7 @@ const (
 	logIngestURI             = "/log/ingest"
 	lmLogsMessageKey         = "msg"
 	commonMessageKey         = "message"
+	loglevel                 = "log_level"
 	resourceIDKey            = "_lm.resourceId"
 	timestampKey             = "timestamp"
 	defaultBatchingInterval  = 10 * time.Second
@@ -199,6 +200,7 @@ func buildLogPayload(logItems []model.LogInput, resourceMappingOp string) []mode
 
 		body[resourceIDKey] = logItem.ResourceID
 		body[timestampKey] = logItem.Timestamp
+		body[loglevel] = logItem.LogLevel
 
 		if resourceMappingOp != "" {
 			body[resourceMappingOpKey] = resourceMappingOp
