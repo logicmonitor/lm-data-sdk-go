@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	ratelimiter "github.com/logicmonitor/lm-data-sdk-go/pkg/ratelimiter"
 	"github.com/logicmonitor/lm-data-sdk-go/utils"
 )
 
@@ -89,4 +90,11 @@ type SendTracesOptionalParameters struct {
 
 func NewSendTracesOptionalParameters() *SendTracesOptionalParameters {
 	return &SendTracesOptionalParameters{}
+}
+
+func WithRateLimiterDisabled() Option {
+	return func(l *LMTraceIngest) error {
+		l.rateLimiter = &ratelimiter.NoopRateLimiter{}
+		return nil
+	}
 }

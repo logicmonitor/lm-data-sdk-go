@@ -82,7 +82,7 @@ func TestSendLogs(t *testing.T) {
 		resourceId := map[string]interface{}{"test": "resource"}
 		metadata := map[string]interface{}{"test": "metadata"}
 
-		payload := translator.ConvertToLMLogInput(message, time.Now().String(), resourceId, metadata)
+		payload := translator.ConvertToLMLogInput(message, "", time.Now().String(), resourceId, metadata)
 		resp, err := e.SendLogs(context.Background(), []model.LogInput{payload})
 		assert.NoError(t, err)
 		assert.True(t, resp.Success)
@@ -102,7 +102,7 @@ func TestSendLogs(t *testing.T) {
 		resourceId := map[string]interface{}{"test": "resource"}
 		metadata := map[string]interface{}{"test": "metadata"}
 
-		payload := translator.ConvertToLMLogInput(message, time.Now().String(), resourceId, metadata)
+		payload := translator.ConvertToLMLogInput(message, "", time.Now().String(), resourceId, metadata)
 		_, err := e.SendLogs(context.Background(), []model.LogInput{payload})
 		assert.NoError(t, err)
 	})
@@ -279,7 +279,7 @@ func TestBuildPayload(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			logInput := translator.ConvertToLMLogInput(tt.args.log, tt.args.timestamp, tt.args.resourceId, tt.args.metadata)
+			logInput := translator.ConvertToLMLogInput(tt.args.log, "", tt.args.timestamp, tt.args.resourceId, tt.args.metadata)
 			payload := buildLogPayload([]model.LogInput{logInput}, tt.resourceMappingOp)
 			assert.Equal(t, tt.expectedPayload, payload)
 		})
@@ -410,7 +410,7 @@ func BenchmarkSendLogs(b *testing.B) {
 			auth:        test.fields.auth,
 			rateLimiter: rateLimiter,
 		}
-		payload := translator.ConvertToLMLogInput(test.args.log, time.Now().String(), test.args.resourceId, test.args.metadata)
+		payload := translator.ConvertToLMLogInput(test.args.log, "", time.Now().String(), test.args.resourceId, test.args.metadata)
 		_, err := e.SendLogs(context.Background(), []model.LogInput{payload})
 		if err != nil {
 			fmt.Print(err)

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync/atomic"
 	"time"
+
+	"github.com/logicmonitor/lm-data-sdk-go/utils"
 )
 
 const (
@@ -38,13 +40,15 @@ type TracePayloadMetadata struct {
 // NewTraceRateLimiter creates RateLimiter implementation for traces using RateLimiterSetting
 func NewTraceRateLimiter(setting TraceRateLimiterSetting) (*TraceRateLimiter, error) {
 	if setting.RequestCount == 0 {
-		setting.RequestCount = defaultRequestsPerMinuteLimit
+		setting.RequestCount = utils.GetEnvAsInt("TRACE_REQUESTS_PER_MIN", defaultRequestsPerMinuteLimit)
 	}
+
 	if setting.SpanCount == 0 {
-		setting.SpanCount = defaultSpansPerMinuteLimit
+		setting.SpanCount = utils.GetEnvAsInt("TRACE_SPANS_PER_MIN", defaultSpansPerMinuteLimit)
 	}
+
 	if setting.SpanCountPerRequest == 0 {
-		setting.SpanCountPerRequest = defaultSpansPerRequestLimit
+		setting.SpanCountPerRequest = utils.GetEnvAsInt("TRACE_SPANS_PER_REQUEST", defaultSpansPerRequestLimit)
 	}
 	return &TraceRateLimiter{
 		maxRequestCount:        uint64(setting.RequestCount),
