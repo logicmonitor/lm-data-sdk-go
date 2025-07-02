@@ -177,6 +177,7 @@ func TestCombineBatchedLogRequests(t *testing.T) {
 func TestBuildPayload(t *testing.T) {
 	type args struct {
 		log        interface{}
+		LogLevel   string
 		timestamp  string
 		resourceId map[string]interface{}
 		metadata   map[string]interface{}
@@ -192,6 +193,7 @@ func TestBuildPayload(t *testing.T) {
 			name: "log message value in string format",
 			args: args{
 				log:        "This is test batch message",
+				LogLevel:   "",
 				timestamp:  "04:33:37.4203915 +0000 UTC",
 				resourceId: map[string]interface{}{"host.name": "test"},
 				metadata:   map[string]interface{}{"cloud.provider": "aws"},
@@ -199,6 +201,7 @@ func TestBuildPayload(t *testing.T) {
 			expectedPayload: []model.LogPayload{
 				{
 					lmLogsMessageKey: "This is test batch message",
+					"log_level":      "",
 					resourceIDKey:    map[string]interface{}{"host.name": "test"},
 					timestampKey:     "04:33:37.4203915 +0000 UTC",
 					"cloud.provider": "aws",
@@ -209,6 +212,7 @@ func TestBuildPayload(t *testing.T) {
 			name: "log message value in map format",
 			args: args{
 				log:        map[string]interface{}{"channel": "Security", "computer": "OtelDemoDevice", "details": map[string]interface{}{"Account For Which Logon Failed": map[string]interface{}{"Account Domain": "OTELDEMODEVICE", "Account Name": "Administrator Security", "ID": "S-1-0-0"}}, "message": "An account failed to log on."},
+				LogLevel:   "",
 				timestamp:  "04:33:37.4203915 +0000 UTC",
 				resourceId: map[string]interface{}{"host.name": "test"},
 				metadata:   map[string]interface{}{"cloud.provider": "azure"},
@@ -216,6 +220,7 @@ func TestBuildPayload(t *testing.T) {
 			expectedPayload: []model.LogPayload{
 				{
 					lmLogsMessageKey: "An account failed to log on.",
+					"log_level":      "",
 					resourceIDKey:    map[string]interface{}{"host.name": "test"},
 					timestampKey:     "04:33:37.4203915 +0000 UTC",
 					"cloud.provider": "azure",
@@ -229,6 +234,7 @@ func TestBuildPayload(t *testing.T) {
 			name: "log message value from metadata",
 			args: args{
 				log:        nil,
+				LogLevel:   "",
 				timestamp:  "04:33:37.4203915 +0000 UTC",
 				resourceId: map[string]interface{}{"host.name": "test"},
 				metadata: map[string]interface{}{"azure.category": "FunctionAppLogs", "azure.properties": map[string]interface{}{
@@ -244,6 +250,7 @@ func TestBuildPayload(t *testing.T) {
 				{
 					lmLogsMessageKey: "Executing 'Functions.ConnectDB' (Reason='This function was programmatically called via the host APIs.",
 					resourceIDKey:    map[string]interface{}{"host.name": "test"},
+					"log_level":      "",
 					timestampKey:     "04:33:37.4203915 +0000 UTC",
 					"azure.category": "FunctionAppLogs",
 					"azure.properties": map[string]interface{}{
@@ -260,6 +267,7 @@ func TestBuildPayload(t *testing.T) {
 			name: "pass resource mapping operation",
 			args: args{
 				log:        "This is test batch message",
+				LogLevel:   "",
 				timestamp:  "04:33:37.4203915 +0000 UTC",
 				resourceId: map[string]interface{}{"host.name": "test"},
 				metadata:   map[string]interface{}{"cloud.provider": "aws"},
@@ -268,6 +276,7 @@ func TestBuildPayload(t *testing.T) {
 			expectedPayload: []model.LogPayload{
 				{
 					lmLogsMessageKey:     "This is test batch message",
+					"log_level":          "",
 					resourceIDKey:        map[string]interface{}{"host.name": "test"},
 					timestampKey:         "04:33:37.4203915 +0000 UTC",
 					resourceMappingOpKey: "OR",
@@ -409,6 +418,7 @@ func BenchmarkSendLogs(b *testing.B) {
 			url:         test.fields.url,
 			auth:        test.fields.auth,
 			rateLimiter: rateLimiter,
+			batch:       NewLogBatch(),
 		}
 		payload := translator.ConvertToLMLogInput(test.args.log, "", time.Now().String(), test.args.resourceId, test.args.metadata)
 		_, err := e.SendLogs(context.Background(), []model.LogInput{payload})
