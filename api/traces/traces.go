@@ -93,11 +93,14 @@ func NewLMTraceIngest(ctx context.Context, opts ...Option) (*LMTraceIngest, erro
 		traceIngest.url = tracesURL
 	}
 
-	traceIngest.rateLimiter, err = rateLimiter.NewTraceRateLimiter(traceIngest.rateLimiterSetting)
-	if err != nil {
-		return nil, err
+	if traceIngest.rateLimiter == nil {
+		traceIngest.rateLimiter, err = rateLimiter.NewTraceRateLimiter(traceIngest.rateLimiterSetting)
+		if err != nil {
+			return nil, err
+		}
+
+		go traceIngest.rateLimiter.Run(ctx)
 	}
-	go traceIngest.rateLimiter.Run(ctx)
 
 	if traceIngest.batch.enabled {
 		go traceIngest.processBatch(ctx)

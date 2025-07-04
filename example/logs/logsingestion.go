@@ -30,7 +30,7 @@ func main() {
 	metadata := map[string]interface{}{"testKey": "testValue"}
 
 	fmt.Println("Sending log1....")
-	logInput := translator.ConvertToLMLogInput(logMessage, utils.NewTimestampFromTime(time.Now()).String(), resourceIDs, metadata)
+	logInput := translator.ConvertToLMLogInput(logMessage, "", utils.NewTimestampFromTime(time.Now()).String(), resourceIDs, metadata)
 	_, err = lmLog.SendLogs(context.Background(), []model.LogInput{logInput})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error in sending log: %v", err)
