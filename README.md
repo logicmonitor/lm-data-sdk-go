@@ -77,6 +77,46 @@ Following options can be used to create the metrics api client.
 | `WithEndpoint(endpoint string)` | Sets endpoint to send the metrics to. Default value is `https://${LOGICMONITOR_ACCOUNT}.logicmonitor.com/rest/`.|
 | `WithAuthentication(authParams utils.AuthParams)`  | Sets authentication parameters. |
 
+### OTLP Metrics Ingestion
+
+This is how you can initialise otlp metrics client:
+
+```go
+import (
+	"context"
+
+	"github.com/logicmonitor/lm-data-sdk-go/api/otlpmetrics"
+	"github.com/logicmonitor/lm-data-sdk-go/utils"
+	"go.opentelemetry.io/collector/pdata/pmetric"
+)
+
+func main() {
+	client, err := otlpmetrics.NewLMOTLPMetricIngest(context.Background(),
+		otlpmetrics.WithAuthentication(utils.AuthParams{ /* ... */ }),
+		otlpmetrics.WithOTLPMetricBatchingDisabled(),
+	)
+	if err != nil {
+		panic(err)
+	}
+	_, err = client.SendOTLPMetrics(context.Background(), pmetric.NewMetrics())
+}
+```
+
+#### Options
+
+| Option | Description |
+| -------------------- |:----------------------------------:|
+| `WithOTLPMetricBatchingInterval(batchinterval time.Duration)` | Sets time interval between OTLP metric batches. Default is `10s`. |
+| `WithOTLPMetricBatchingDisabled()` | Disables SDK-side batching. Default is enabled. |
+| `WithGzipCompression(gzip bool)` | Enables / disables gzip. Default is enabled. |
+| `WithRateLimit(requestCount int)` | Request quota per minute. Default is `100`. |
+| `WithHTTPClient(client *http.Client)` | Custom HTTP client. |
+| `WithEndpoint(endpoint string)` | Base REST URL. Default is `https://${LOGICMONITOR_ACCOUNT}.logicmonitor.com/rest`. The SDK appends `/api/v1/metrics`. |
+| `WithAuthentication(authParams utils.AuthParams)` | Authentication parameters (collector credentials, LMv1, or bearer). |
+| `WithCollectorID(id string)` | Sets the `Collector-ID` request header. |
+| `WithUserAgent(userAgent string)` | Sets the User-Agent header. |
+| `WithRateLimiterDisabled()` | Disables the SDK rate limiter. |
+
 ### Logs Ingestion
 
 This is how you can initialise logs client:
