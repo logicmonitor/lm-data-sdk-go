@@ -27,6 +27,18 @@ type MetricsIngestAPIResponse struct {
 	} `json:"multiStatus"`
 }
 
+type OTLPMetricsIngestAPIResponse struct {
+	StatusCode  int    `json:"statusCode"`
+	Success     bool   `json:"success"`
+	Message     string `json:"message"`
+	Error       error  `json:"error"`
+	MultiStatus []struct {
+		Code  float64 `json:"code"`
+		Error string  `json:"error"`
+	} `json:"multiStatus"`
+	RetryAfter int `json:"retryAfter"`
+}
+
 type LogsIngestAPIResponse struct {
 	StatusCode  int    `json:"statusCode"`
 	Success     bool   `json:"success"`
